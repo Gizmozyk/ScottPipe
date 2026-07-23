@@ -29,8 +29,9 @@ fi
 
 echo "Installing Android command-line tools..."
 mkdir -p "$ANDROID_SDK_DIR/cmdline-tools"
-curl -L "$CMDLINE_TOOLS_URL" -o "$CMDLINE_TOOLS_ZIP"
+curl -fL --retry 3 --retry-connrefused "$CMDLINE_TOOLS_URL" -o "$CMDLINE_TOOLS_ZIP"
 unzip -q "$CMDLINE_TOOLS_ZIP" -d "$ANDROID_SDK_DIR/cmdline-tools"
+rm -rf "$ANDROID_SDK_DIR/cmdline-tools/latest"
 mv "$ANDROID_SDK_DIR/cmdline-tools/cmdline-tools" "$ANDROID_SDK_DIR/cmdline-tools/latest"
 rm "$CMDLINE_TOOLS_ZIP"
 
@@ -38,7 +39,17 @@ export ANDROID_HOME="$ANDROID_SDK_DIR"
 export PATH="$PATH:$ANDROID_SDK_DIR/cmdline-tools/latest/bin:$ANDROID_SDK_DIR/platform-tools"
 
 echo "Accepting licenses..."
+# `yes` runs forever and only dies from SIGPIPE once sdkmanager closes the
+# pipe on exit, so under pipefail its 141 (not sdkmanager's real exit code)
+# would otherwise be what `set -e` sees here and kills the script on every run.
+set +o pipefail
 yes | sdkmanager --licenses
+sdkmanager_licenses_status="${PIPESTATUS[1]}"
+set -o pipefail
+if [ "$sdkmanager_licenses_status" -ne 0 ]; then
+  echo "sdkmanager --licenses failed with exit code $sdkmanager_licenses_status" >&2
+  exit "$sdkmanager_licenses_status"
+fi
 
 echo "Installing SDK packages..."
 sdkmanager "platform-tools" "$PLATFORM" "$BUILD_TOOLS"
@@ -67,7 +78,7 @@ if [ -f "$GRADLE_DIST_HASH_DIR/gradle-9.6.1-bin.zip.ok" ]; then
   echo "Gradle 9.6.1 dist cache already present, skipping."
 else
   echo "Fetching vendored Gradle 9.6.1 dist cache..."
-  curl -L "$GRADLE_DIST_CACHE_URL" -o "$GRADLE_DIST_CACHE_TAR"
+  curl -fL --retry 3 --retry-connrefused "$GRADLE_DIST_CACHE_URL" -o "$GRADLE_DIST_CACHE_TAR"
   echo "$GRADLE_DIST_CACHE_SHA256  $GRADLE_DIST_CACHE_TAR" | sha256sum -c -
   mkdir -p "$GRADLE_USER_HOME_DIR/wrapper/dists"
   tar -xzf "$GRADLE_DIST_CACHE_TAR" -C "$GRADLE_USER_HOME_DIR/wrapper/dists"
