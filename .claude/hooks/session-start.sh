@@ -49,9 +49,28 @@ echo "export PATH=\$PATH:$ANDROID_SDK_DIR/cmdline-tools/latest/bin:$ANDROID_SDK_
 
 echo "Android SDK installation complete."
 
-# NOTE: this only provisions the Android SDK. ScottPipe's Gradle wrapper is
-# pinned to 9.6.1 (AGP 9.2.1 requires Gradle >= 9.4.1), and Gradle's
-# distribution downloads now redirect to github.com/gradle/gradle-distributions
-# release assets, which this session's repo-scoped GitHub access can't reach
-# (confirmed 2026-07-22; system Gradle 8.14.3 is also too old for AGP 9.2.1).
-# Until that's resolved, ./gradlew will still fail at the wrapper-download step.
+# ScottPipe's Gradle wrapper is pinned to 9.6.1 (AGP 9.2.1 requires Gradle
+# >= 9.4.1), and Gradle's distribution downloads redirect to
+# github.com/gradle/gradle-distributions release assets, which this session's
+# repo-scoped GitHub access can't reach (confirmed 2026-07-22; system Gradle
+# 8.14.3 is also too old for AGP 9.2.1). To avoid that, pre-populate the
+# wrapper's own dist cache from a tarball vendored in this repo's own GitHub
+# releases (reachable under repo-scoped access) so `./gradlew` finds the
+# distribution already extracted and never attempts the download.
+GRADLE_USER_HOME_DIR="${GRADLE_USER_HOME:-$HOME/.gradle}"
+GRADLE_DIST_HASH_DIR="$GRADLE_USER_HOME_DIR/wrapper/dists/gradle-9.6.1-bin/4ticwg1pgcbps2hj28r8so764"
+GRADLE_DIST_CACHE_URL="https://github.com/Gizmozyk/ScottPipe/releases/download/gradle-9.6.1-dist-cache/gradle-9.6.1-bin-dist-cache.tar.gz"
+GRADLE_DIST_CACHE_SHA256="75158e61120868a62076fefcf8a7075f43e959172cd5ba0b05fb27bac367282a"
+GRADLE_DIST_CACHE_TAR="/tmp/gradle-9.6.1-bin-dist-cache.tar.gz"
+
+if [ -f "$GRADLE_DIST_HASH_DIR/gradle-9.6.1-bin.zip.ok" ]; then
+  echo "Gradle 9.6.1 dist cache already present, skipping."
+else
+  echo "Fetching vendored Gradle 9.6.1 dist cache..."
+  curl -L "$GRADLE_DIST_CACHE_URL" -o "$GRADLE_DIST_CACHE_TAR"
+  echo "$GRADLE_DIST_CACHE_SHA256  $GRADLE_DIST_CACHE_TAR" | sha256sum -c -
+  mkdir -p "$GRADLE_USER_HOME_DIR/wrapper/dists"
+  tar -xzf "$GRADLE_DIST_CACHE_TAR" -C "$GRADLE_USER_HOME_DIR/wrapper/dists"
+  rm "$GRADLE_DIST_CACHE_TAR"
+  echo "Gradle 9.6.1 dist cache installed."
+fi
