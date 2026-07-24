@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Overrides the launcher icon's background color for this fork (ScottPipe), so it's visually
+  distinct from an official NewPipe install on the same phone at a glance, not just by its label.
+  The foreground glyph (mipmap/ic_launcher_foreground) is unchanged.
+-->
+<resources>
+    <color name="ic_launcher_background">#1A237E</color>
+</resources>
