@@ -87,6 +87,18 @@ adb shell input tap <centerX> <centerY>
 `uiautomator dump` occasionally returns `ERROR: null root node` transiently
 (e.g. mid-transition) — just retry after a short sleep.
 
+**Gotcha — `adb shell input text` can silently truncate long strings.**
+Typing a full channel URL (~50+ characters) into an `EditText` in one
+`input text` call sometimes lands only a truncated prefix, with no error
+—confirmed by dumping the UI immediately after and reading the field's
+actual `text` attribute back, rather than assuming the tap-and-type
+sequence landed correctly. This is an ADB timing/buffering artifact, not
+an app bug (no length limit exists in the actual dialog code). Splitting
+a long string into two smaller `input text` calls avoided it. When a test
+step depends on an exact typed value (not just "something non-empty"),
+verify by reading the field back before proceeding, especially for long
+strings.
+
 ## Instrumented tests (androidTest)
 
 DB/Context-dependent tests (Room DAOs, migrations, `KidModePinManager`'s use
@@ -137,6 +149,58 @@ Found and fixed while adding Phase D's own migration; when adding a new
 `MIGRATION_N_N+1`, check both `Migrations.kt` *and* the actual
 `.addMigrations(...)` call site in `NewPipeDatabase.kt`, not just the
 import.
+
+**Gotcha — `KidModeContentFilter`/`KidModeGate` silently no-op when Kid
+Mode is off, and it defaults to off.** Both classes' very first check is
+`KidModeGate(context).isEnabled()` (reads a SharedPreferences flag), and
+both return "allowed"/"unfiltered" immediately if it's false — by design,
+so the rest of the app has zero overhead when Kid Mode isn't in use. This
+silently broke `FeedViewModelTest` once: the test blacklisted a channel
+and asserted it was filtered out, but never flipped the preference on, so
+the filter no-op'd and the assertion failed with a confusing "expected 0
+got 1" rather than any obvious "Kid Mode is off" signal. Any test
+exercising either class needs `PreferenceManager.getDefaultSharedPreferences(context)
+.edit().putBoolean(context.getString(R.string.kid_mode_enabled_key), true).apply()`
+in its setup (see `KidModeGateTest`/`KidModeContentFilterTest`/
+`FeedViewModelTest` for the exact pattern) — don't assume "I seeded the
+data, so the behavior will trigger."
+
+**Gotcha — extractor `Info` classes with private constructors block
+Fragment-level fake-data testing.** Tried to write a test proving
+`BaseListInfoFragment`'s/`SearchFragment`'s real loading chains actually
+call `KidModeContentFilter` (not just that the filter logic itself is
+correct in isolation, which `KidModeContentFilterTest` already covers).
+This needs a fake/canned `ListInfo` subclass (`KioskInfo`, `PlaylistInfo`,
+etc.) to hand a test Fragment instead of hitting real network — but those
+classes have **private constructors**, only ever producible via their own
+real `getInfo(...)` extraction pipeline (confirmed via `javap` on the
+vendored `NewPipeExtractor` jar, not assumed). `SearchInfo`/`ChannelTabInfo`
+happen to have public constructors, but `SearchFragment.startLoading()`
+calls the static `ExtractorHelper.searchFor(...)` directly with no
+injectable seam, so even those can't be swapped for fake data without
+mocking a static method (Mockito's inline mock maker, not currently an
+`androidTestImplementation` dependency) or a production-code refactor
+introduced purely for testability. Concluded this wiring is only
+practically verifiable by manual testing (see Phase E below) or real
+integration tests hitting real network — didn't force it, and didn't add
+`fragment-testing`/Mockito-in-androidTest as a result since neither would
+have actually solved the constructor problem on its own.
+
+**Pattern — testing a `ViewModel` that exposes `LiveData` and reacts to a
+process-wide singleton event source.** `FeedViewModelTest` is this
+project's first `ViewModel` test; the recipe, reusable for
+`SubscriptionViewModel`-style classes later: construct the `ViewModel`
+and register `.observeForever { ... }` inside
+`InstrumentationRegistry.getInstrumentation().runOnMainSync { ... }`
+(`LiveData` requires observer registration on the main thread), capture
+the emitted state into a `CountDownLatch`-guarded variable from the
+observer callback, then `latch.await(timeout, ...)` on the test thread.
+For `FeedViewModel` specifically, also call `FeedEventManager.reset()` in
+`@Before` — it's a process-wide singleton `BehaviorProcessor` that
+retains its last-emitted event across test method (and even test class)
+boundaries within the same instrumented test run, so a previous test's
+leftover event could otherwise leak into a fresh `ViewModel`'s first
+`combineLatest` tick.
 
 
 ## Kid Mode manual verification (Phase A)
@@ -298,3 +362,53 @@ devices (this walkthrough bypassed it entirely via manual connect). That
 needs the user's own real phone on the same Wi-Fi as a kid device — worth
 doing once Phase D is otherwise considered stable, since this is the
 first phase where trying that is actually meaningful.
+
+## Kid Mode channel whitelist/blacklist and feed filtering manual verification (Phase E)
+
+Full walkthrough performed and passing as of 2026-07-24, on a single
+emulator against real (live) YouTube data — a channel was blacklisted/
+whitelisted via `curl`+`openssl` (standing in for Parent Mode's HTTP
+calls, same technique as Phases B/C) and, separately, via the actual
+Parent Mode UI paired to itself over `127.0.0.1` (the server binds
+`0.0.0.0`, so a device can reach its own server this way — a convenient
+way to smoke-test the Parent Mode UI without needing the full
+dual-emulator setup for every check):
+
+- Blacklisting a real channel (Veritasium) made it disappear entirely
+  from live search results for a query that previously returned its
+  channel card and videos prominently (confirmed by the search going from
+  several results to "No results" for the exact same query)
+- The same blacklisted channel's own "Videos" tab was empty when visited
+  directly — an emergent (correct, not a bug) consequence of the same
+  uploader-URL filter applying everywhere, including a channel's own tab
+- Tapping SUBSCRIBE on the blacklisted channel's page showed the "This
+  channel is blocked" toast immediately, with **no approval dialog** and
+  **no new row** in `/pending-requests` — confirmed by checking the
+  pending-requests list before and after and seeing it unchanged
+- Whitelisting a different real channel (Kurzgesagt) and tapping
+  SUBSCRIBE flipped the button straight to "SUBSCRIBED" with zero dialog
+  and, again, no new pending-request row
+- Un-listing (removing) the blacklist rule made the channel reappear in
+  search immediately
+- **The scenario specifically requested**: blacklisting a channel the kid
+  was *already subscribed to* (Kurzgesagt, subscribed via the whitelist
+  step above) removed its videos from the subscriptions feed
+  ("What's New") on the next real fetch — confirmed by triggering an
+  actual `FeedLoadService` network fetch (`Feed last updated: moments
+  ago` in the UI, `FeedLoadService` lifecycle logged in `adb logcat`) and
+  seeing "Nothing here but crickets" despite a successful fetch, then
+  removing the blacklist and confirming the exact same real videos
+  reappeared on the next fetch
+- The full `ParentModeChannelsActivity` UI was exercised for real (not
+  just via curl): the "Manage channels" menu item on
+  `ParentModeRequestsActivity`, the rule list rendering existing rules,
+  the "Add channel" dialog's three buttons (Cancel/Blacklist/Whitelist),
+  and tap-to-remove with its confirmation dialog all worked correctly
+
+The Feed ("What's New") screen needs an explicit fetch to test against —
+it doesn't eagerly load a newly-subscribed channel's videos on its own.
+Trigger one by tapping the "Feed last updated: ..." bar itself (its whole
+row is the refresh target, not a separate small icon — check
+`resource-id="...refresh_root_view"` bounds if unsure) and confirm via
+`adb logcat -s FeedLoadService` that a real fetch ran before drawing
+conclusions from an empty feed.

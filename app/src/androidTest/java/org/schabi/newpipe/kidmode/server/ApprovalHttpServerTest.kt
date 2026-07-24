@@ -11,12 +11,14 @@ import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Test
 import org.schabi.newpipe.NewPipeDatabase
 import org.schabi.newpipe.kidmode.db.ApprovalRequestEntity
 import org.schabi.newpipe.kidmode.db.ApprovalRequestStatus
 import org.schabi.newpipe.kidmode.db.ApprovalRequestType
+import org.schabi.newpipe.kidmode.db.ChannelListStatus
 import org.schabi.newpipe.testUtil.TestDatabase
 
 class ApprovalHttpServerTest {
@@ -195,5 +197,72 @@ class ApprovalHttpServerTest {
         val response = get("/nope")
 
         assertEquals(404, response.code)
+    }
+
+    @Test
+    fun setChannelRuleWithoutAuthHeadersIsRejected() {
+        val response = post(
+            "/channels/rule",
+            """{"serviceId": 0, "channelUrl": "https://youtube.com/channel/1", "status": "WHITELISTED"}"""
+        )
+
+        assertEquals(401, response.code)
+    }
+
+    @Test
+    fun setChannelRuleStoresTheRuleWhenAuthenticated() {
+        val body = """{"serviceId": 0, "channelUrl": "https://youtube.com/channel/1", "status": "WHITELISTED"}"""
+        val headers = pairAndGetAuthHeaders("POST", "/channels/rule", body)
+
+        val response = post("/channels/rule", body, headers)
+
+        assertEquals(200, response.code)
+        val rule = database().channelRuleDAO().getRule(0, "https://youtube.com/channel/1")
+        assertEquals(ChannelListStatus.WHITELISTED, rule?.status)
+    }
+
+    @Test
+    fun settingARuleAgainFlipsIt() {
+        val whitelistBody = """{"serviceId": 0, "channelUrl": "https://youtube.com/channel/1", "status": "WHITELISTED"}"""
+        post("/channels/rule", whitelistBody, pairAndGetAuthHeaders("POST", "/channels/rule", whitelistBody))
+
+        val blacklistBody = """{"serviceId": 0, "channelUrl": "https://youtube.com/channel/1", "status": "BLACKLISTED"}"""
+        post("/channels/rule", blacklistBody, pairAndGetAuthHeaders("POST", "/channels/rule", blacklistBody))
+
+        val rule = database().channelRuleDAO().getRule(0, "https://youtube.com/channel/1")
+        assertEquals(1, database().channelRuleDAO().getAllRules().blockingFirst().size)
+        assertEquals(ChannelListStatus.BLACKLISTED, rule?.status)
+    }
+
+    @Test
+    fun unlistChannelRemovesTheRuleWhenAuthenticated() {
+        val setBody = """{"serviceId": 0, "channelUrl": "https://youtube.com/channel/1", "status": "WHITELISTED"}"""
+        post("/channels/rule", setBody, pairAndGetAuthHeaders("POST", "/channels/rule", setBody))
+
+        val unlistBody = """{"serviceId": 0, "channelUrl": "https://youtube.com/channel/1"}"""
+        val response = post("/channels/unlist", unlistBody, pairAndGetAuthHeaders("POST", "/channels/unlist", unlistBody))
+
+        assertEquals(200, response.code)
+        assertNull(database().channelRuleDAO().getRule(0, "https://youtube.com/channel/1"))
+    }
+
+    @Test
+    fun getChannelsWithoutAuthHeadersIsRejected() {
+        val response = get("/channels")
+
+        assertEquals(401, response.code)
+    }
+
+    @Test
+    fun getChannelsListsSetRulesWhenAuthenticated() {
+        val setBody = """{"serviceId": 0, "channelUrl": "https://youtube.com/channel/1", "status": "WHITELISTED"}"""
+        post("/channels/rule", setBody, pairAndGetAuthHeaders("POST", "/channels/rule", setBody))
+
+        val response = get("/channels", pairAndGetAuthHeaders("GET", "/channels"))
+        val rules = JSONObject(response.body!!.string()).getJSONArray("rules")
+
+        assertEquals(200, response.code)
+        assertEquals(1, rules.length())
+        assertEquals("WHITELISTED", rules.getJSONObject(0).getString("status"))
     }
 }

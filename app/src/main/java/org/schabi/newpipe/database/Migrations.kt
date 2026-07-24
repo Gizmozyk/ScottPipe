@@ -32,6 +32,7 @@ object Migrations {
     const val DB_VER_10 = 10
     const val DB_VER_11 = 11
     const val DB_VER_12 = 12
+    const val DB_VER_13 = 13
 
     private val TAG = Migrations::class.java.getName()
     private val isDebug = MainActivity.DEBUG
@@ -407,6 +408,21 @@ object Migrations {
                 "`port` INTEGER NOT NULL, " +
                 "`shared_secret` TEXT NOT NULL, " +
                 "`paired_at` INTEGER NOT NULL)"
+        )
+    }
+
+    val MIGRATION_12_13 = Migration(DB_VER_12, DB_VER_13) { db ->
+        db.execSQL("ALTER TABLE `kid_mode_approved_channels` RENAME TO `kid_mode_channel_rules`")
+        db.execSQL("ALTER TABLE `kid_mode_channel_rules` RENAME COLUMN `approved_at` TO `set_at`")
+        db.execSQL(
+            "ALTER TABLE `kid_mode_channel_rules` ADD COLUMN `status` TEXT NOT NULL " +
+                "DEFAULT 'WHITELISTED'"
+        )
+        db.execSQL("DROP INDEX IF EXISTS `index_kid_mode_approved_channels_service_id_url`")
+        db.execSQL(
+            "CREATE UNIQUE INDEX IF NOT EXISTS " +
+                "`index_kid_mode_channel_rules_service_id_url` " +
+                "ON `kid_mode_channel_rules` (`service_id`, `url`)"
         )
     }
 }

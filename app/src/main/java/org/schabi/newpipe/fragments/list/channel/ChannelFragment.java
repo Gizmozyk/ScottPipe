@@ -17,6 +17,7 @@ import android.view.MenuInflater;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -42,6 +43,7 @@ import org.schabi.newpipe.extractor.exceptions.ContentNotSupportedException;
 import org.schabi.newpipe.extractor.linkhandler.ListLinkHandler;
 import org.schabi.newpipe.fragments.BaseStateFragment;
 import org.schabi.newpipe.fragments.detail.TabAdapter;
+import org.schabi.newpipe.kidmode.GateDecision;
 import org.schabi.newpipe.kidmode.KidModeGate;
 import org.schabi.newpipe.kidmode.ui.ApprovalWaitingDialogFragment;
 import org.schabi.newpipe.ktx.AnimationType;
@@ -290,14 +292,25 @@ public class ChannelFragment extends BaseStateFragment<ChannelInfo>
     private Function<Object, Object> mapOnSubscribe(final SubscriptionEntity subscription) {
         return (@NonNull final Object o) -> {
             final KidModeGate kidModeGate = new KidModeGate(requireContext());
-            if (kidModeGate.canSubscribe()) {
-                subscriptionManager.insertSubscription(subscription);
-            } else {
-                final long requestId = kidModeGate.requestSubscribeApproval(subscription)
-                        .blockingGet();
-                AndroidSchedulers.mainThread().scheduleDirect(() ->
-                        ApprovalWaitingDialogFragment.newInstance(requestId)
-                                .show(getFM(), ApprovalWaitingDialogFragment.TAG));
+            final GateDecision decision = kidModeGate.canSubscribe(
+                    subscription.getServiceId(), subscription.getUrl());
+            switch (decision) {
+                case ALLOWED:
+                    subscriptionManager.insertSubscription(subscription);
+                    break;
+                case BLOCKED:
+                    AndroidSchedulers.mainThread().scheduleDirect(() ->
+                            Toast.makeText(requireContext(),
+                                    R.string.kid_mode_channel_blocked_toast,
+                                    Toast.LENGTH_SHORT).show());
+                    break;
+                case NEEDS_APPROVAL:
+                    final long requestId = kidModeGate.requestSubscribeApproval(subscription)
+                            .blockingGet();
+                    AndroidSchedulers.mainThread().scheduleDirect(() ->
+                            ApprovalWaitingDialogFragment.newInstance(requestId)
+                                    .show(getFM(), ApprovalWaitingDialogFragment.TAG));
+                    break;
             }
             return o;
         };

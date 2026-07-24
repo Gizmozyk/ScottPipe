@@ -11,6 +11,7 @@ import android.util.Log;
 import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.View;
+import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -388,13 +389,22 @@ public abstract class BaseListFragment<I, N> extends BaseStateFragment<I>
                 new KidModeGate(requireContext())
                         .canPlay(selectedItem.getServiceId(), selectedItem.getUploaderUrl())
                         .observeOn(AndroidSchedulers.mainThread())
-                        .subscribe(canPlay -> {
-                            if (canPlay) {
-                                NavigationHelper.openVideoDetailFragment(requireContext(), getFM(),
-                                        selectedItem.getServiceId(), selectedItem.getUrl(),
-                                        selectedItem.getName(), null, false);
-                            } else {
-                                requestPlayApproval(selectedItem);
+                        .subscribe(decision -> {
+                            switch (decision) {
+                                case ALLOWED:
+                                    NavigationHelper.openVideoDetailFragment(requireContext(),
+                                            getFM(), selectedItem.getServiceId(),
+                                            selectedItem.getUrl(), selectedItem.getName(), null,
+                                            false);
+                                    break;
+                                case BLOCKED:
+                                    Toast.makeText(requireContext(),
+                                            R.string.kid_mode_channel_blocked_toast,
+                                            Toast.LENGTH_SHORT).show();
+                                    break;
+                                case NEEDS_APPROVAL:
+                                    requestPlayApproval(selectedItem);
+                                    break;
                             }
                         })
         );

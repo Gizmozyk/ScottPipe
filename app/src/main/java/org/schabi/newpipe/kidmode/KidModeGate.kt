@@ -14,8 +14,25 @@ import org.schabi.newpipe.database.subscription.SubscriptionEntity
 import org.schabi.newpipe.kidmode.db.ApprovalRequestEntity
 import org.schabi.newpipe.kidmode.db.ApprovalRequestStatus
 import org.schabi.newpipe.kidmode.db.ApprovalRequestType
+import org.schabi.newpipe.kidmode.db.ChannelListStatus
 import org.schabi.newpipe.local.subscription.SubscriptionManager
 import org.schabi.newpipe.util.ExtractorHelper
+
+/**
+ * A channel's blacklist status is always checked before anything else, so it also serves as the
+ * decision for whatever chokepoint asked (play or subscribe) -- there's no path where a
+ * blacklisted channel needs approval instead of being blocked outright.
+ */
+enum class GateDecision {
+    /** Kid Mode is off, the channel is whitelisted/subscribed/already approved, etc. */
+    ALLOWED,
+
+    /** The channel is blacklisted -- never creates a pending [ApprovalRequestEntity]. */
+    BLOCKED,
+
+    /** Needs a parent's approval (local PIN or Parent Mode) before proceeding. */
+    NEEDS_APPROVAL
+}
 
 /**
  * Central gate for the two Kid Mode-restricted actions: playing a video from a channel the kid
@@ -35,26 +52,28 @@ class KidModeGate(context: Context) {
     }
 
     /**
-     * Whether playback may proceed immediately, without a parent's approval: Kid Mode is off,
-     * [channelUrl] is unknown, the channel is subscribed, or a parent already approved it.
+     * Whether playback may proceed immediately, is blocked outright, or needs a parent's
+     * approval. A channel's rule (see [org.schabi.newpipe.kidmode.db.ChannelRuleEntity]) is
+     * checked before subscription/approval status: a blacklisted channel is always [GateDecision.BLOCKED]
+     * even if somehow already subscribed or previously approved, and a whitelisted one is always
+     * [GateDecision.ALLOWED] without needing a separate per-video approval.
      */
-    fun canPlay(serviceId: Int, channelUrl: String?): Single<Boolean> {
+    fun canPlay(serviceId: Int, channelUrl: String?): Single<GateDecision> {
         if (!isEnabled() || channelUrl.isNullOrEmpty()) {
-            return Single.just(true)
+            return Single.just(GateDecision.ALLOWED)
         }
 
-        return database.subscriptionDAO().getSubscription(serviceId, channelUrl)
-            .isEmpty()
-            .flatMap { notSubscribed ->
-                if (!notSubscribed) {
-                    Single.just(true)
-                } else {
-                    database.approvedChannelDAO().isApproved(serviceId, channelUrl)
-                        .isEmpty()
-                        .map { notApproved -> !notApproved }
-                }
+        return Single.defer {
+            when (database.channelRuleDAO().getRule(serviceId, channelUrl)?.status) {
+                ChannelListStatus.BLACKLISTED -> Single.just(GateDecision.BLOCKED)
+
+                ChannelListStatus.WHITELISTED -> Single.just(GateDecision.ALLOWED)
+
+                null -> database.subscriptionDAO().getSubscription(serviceId, channelUrl)
+                    .isEmpty()
+                    .map { notSubscribed -> if (notSubscribed) GateDecision.NEEDS_APPROVAL else GateDecision.ALLOWED }
             }
-            .subscribeOn(Schedulers.io())
+        }.subscribeOn(Schedulers.io())
     }
 
     fun requestPlayApproval(
@@ -77,8 +96,22 @@ class KidModeGate(context: Context) {
         }.subscribeOn(Schedulers.io())
     }
 
-    /** Whether a brand new subscription may be created immediately, without approval. */
-    fun canSubscribe(): Boolean = !isEnabled()
+    /**
+     * Whether a brand new subscription may proceed immediately, is blocked outright, or needs a
+     * parent's approval -- synchronous (unlike [canPlay]) since its one call site
+     * ([org.schabi.newpipe.fragments.list.channel.ChannelFragment]'s `mapOnSubscribe`) already
+     * runs on [Schedulers.io] as part of an existing blocking Rx chain.
+     */
+    fun canSubscribe(serviceId: Int, channelUrl: String): GateDecision {
+        if (!isEnabled()) {
+            return GateDecision.ALLOWED
+        }
+        return when (database.channelRuleDAO().getRule(serviceId, channelUrl)?.status) {
+            ChannelListStatus.BLACKLISTED -> GateDecision.BLOCKED
+            ChannelListStatus.WHITELISTED -> GateDecision.ALLOWED
+            null -> GateDecision.NEEDS_APPROVAL
+        }
+    }
 
     fun requestSubscribeApproval(subscription: SubscriptionEntity): Single<Long> {
         val url = requireNotNull(subscription.url) { "Subscription must have a url" }

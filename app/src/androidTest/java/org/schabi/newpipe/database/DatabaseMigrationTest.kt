@@ -151,6 +151,13 @@ class DatabaseMigrationTest {
             Migrations.MIGRATION_11_12
         )
 
+        testHelper.runMigrationsAndValidate(
+            AppDatabase.DATABASE_NAME,
+            Migrations.DB_VER_13,
+            true,
+            Migrations.MIGRATION_12_13
+        )
+
         val migratedDatabaseV3 = getMigratedDatabase()
         val listFromDB = migratedDatabaseV3.streamDAO().getAll().blockingFirst()
 
@@ -268,6 +275,13 @@ class DatabaseMigrationTest {
             Migrations.MIGRATION_11_12
         )
 
+        testHelper.runMigrationsAndValidate(
+            AppDatabase.DATABASE_NAME,
+            Migrations.DB_VER_13,
+            true,
+            Migrations.MIGRATION_12_13
+        )
+
         val migratedDatabaseV8 = getMigratedDatabase()
         val listFromDB = migratedDatabaseV8.searchHistoryDAO().getAll().blockingFirst()
 
@@ -361,6 +375,13 @@ class DatabaseMigrationTest {
             Migrations.MIGRATION_11_12
         )
 
+        testHelper.runMigrationsAndValidate(
+            AppDatabase.DATABASE_NAME,
+            Migrations.DB_VER_13,
+            true,
+            Migrations.MIGRATION_12_13
+        )
+
         val migratedDatabaseV9 = getMigratedDatabase()
         var localListFromDB = migratedDatabaseV9.playlistDAO().getAll().blockingFirst()
         var remoteListFromDB = migratedDatabaseV9.playlistRemoteDAO().getAll().blockingFirst()
@@ -427,6 +448,13 @@ class DatabaseMigrationTest {
             Migrations.MIGRATION_11_12
         )
 
+        testHelper.runMigrationsAndValidate(
+            AppDatabase.DATABASE_NAME,
+            Migrations.DB_VER_13,
+            true,
+            Migrations.MIGRATION_12_13
+        )
+
         val migratedDatabaseV10 = getMigratedDatabase()
 
         val requestUid = migratedDatabaseV10.approvalRequestDAO().insert(
@@ -445,17 +473,17 @@ class DatabaseMigrationTest {
         assertEquals(ApprovalRequestStatus.PENDING, requestFromDb.status)
         assertEquals(DEFAULT_URL, requestFromDb.targetUrl)
 
-        migratedDatabaseV10.approvedChannelDAO().insert(
-            org.schabi.newpipe.kidmode.db.ApprovedChannelEntity(
+        migratedDatabaseV10.channelRuleDAO().upsertRule(
+            org.schabi.newpipe.kidmode.db.ChannelRuleEntity(
                 serviceId = DEFAULT_SERVICE_ID,
                 channelUrl = DEFAULT_SECOND_URL,
-                approvedAt = 1L
+                status = org.schabi.newpipe.kidmode.db.ChannelListStatus.WHITELISTED,
+                setAt = 1L
             )
         )
-        val approvedChannel = migratedDatabaseV10.approvedChannelDAO()
-            .isApproved(DEFAULT_SERVICE_ID, DEFAULT_SECOND_URL)
-            .blockingGet()
-        assertNotEquals(null, approvedChannel)
+        val channelRule = migratedDatabaseV10.channelRuleDAO()
+            .getRule(DEFAULT_SERVICE_ID, DEFAULT_SECOND_URL)
+        assertNotEquals(null, channelRule)
     }
 
     private fun getMigratedDatabase(): AppDatabase {

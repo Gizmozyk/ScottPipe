@@ -4,7 +4,9 @@
 
 package org.schabi.newpipe.kidmode.parentmode
 
+import android.content.Intent
 import android.os.Bundle
+import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.widget.Toast
@@ -95,9 +97,21 @@ class ParentModeRequestsActivity : AppCompatActivity() {
         disposables.clear()
     }
 
+    override fun onCreateOptionsMenu(menu: Menu): Boolean {
+        menuInflater.inflate(R.menu.menu_parent_mode_requests, menu)
+        return super.onCreateOptionsMenu(menu)
+    }
+
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         if (item.itemId == android.R.id.home) {
             finish()
+            return true
+        }
+        if (item.itemId == R.id.action_manage_channels) {
+            startActivity(
+                Intent(this, ParentModeChannelsActivity::class.java)
+                    .putExtra(ParentModeChannelsActivity.EXTRA_PAIRING_UID, pairingUid)
+            )
             return true
         }
         return super.onOptionsItemSelected(item)

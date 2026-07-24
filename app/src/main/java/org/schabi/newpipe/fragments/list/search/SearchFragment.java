@@ -61,6 +61,7 @@ import org.schabi.newpipe.extractor.services.peertube.linkHandler.PeertubeSearch
 import org.schabi.newpipe.extractor.services.youtube.linkHandler.YoutubeSearchQueryHandlerFactory;
 import org.schabi.newpipe.fragments.BackPressable;
 import org.schabi.newpipe.fragments.list.BaseListFragment;
+import org.schabi.newpipe.kidmode.KidModeContentFilter;
 import org.schabi.newpipe.ktx.AnimationType;
 import org.schabi.newpipe.ktx.ExceptionUtils;
 import org.schabi.newpipe.local.history.HistoryRecordManager;
@@ -891,6 +892,11 @@ public class SearchFragment extends BaseListFragment<SearchInfo, ListExtractor.I
                 Arrays.asList(contentFilter),
                 sortFilter)
                 .subscribeOn(Schedulers.io())
+                .map(result -> {
+                    result.setRelatedItems(KidModeContentFilter.INSTANCE
+                            .filterItems(requireContext(), result.getRelatedItems()));
+                    return result;
+                })
                 .observeOn(AndroidSchedulers.mainThread())
                 .doOnEvent((searchResult, throwable) -> isLoading.set(false))
                 .subscribe(this::handleResult, this::onItemError);
@@ -914,6 +920,11 @@ public class SearchFragment extends BaseListFragment<SearchInfo, ListExtractor.I
                 sortFilter,
                 nextPage)
                 .subscribeOn(Schedulers.io())
+                .map(result -> new ListExtractor.InfoItemsPage<>(
+                        KidModeContentFilter.INSTANCE.filterItems(
+                                requireContext(), result.getItems()),
+                        result.getNextPage(),
+                        result.getErrors()))
                 .observeOn(AndroidSchedulers.mainThread())
                 .doOnEvent((nextItemsResult, throwable) -> isLoading.set(false))
                 .subscribe(this::handleNextItems, this::onItemError);

@@ -15,6 +15,8 @@ import org.schabi.newpipe.NewPipeDatabase
 import org.schabi.newpipe.kidmode.KidModeGate
 import org.schabi.newpipe.kidmode.KidModePairingManager
 import org.schabi.newpipe.kidmode.db.ApprovalRequestEntity
+import org.schabi.newpipe.kidmode.db.ChannelListStatus
+import org.schabi.newpipe.kidmode.db.ChannelRuleEntity
 
 /**
  * Exposes Kid Mode's pending approval requests over local HTTP, so a paired device can (Phase D,
@@ -63,6 +65,15 @@ class ApprovalHttpServer(
                         resolveResponse(uri.removePrefix(DENY_PREFIX)) { kidModeGate.deny(it) }
                     }
 
+                session.method == Method.POST && uri == "/channels/rule" ->
+                    withAuth(session, method, uri, body) { handleSetChannelRule(body) }
+
+                session.method == Method.POST && uri == "/channels/unlist" ->
+                    withAuth(session, method, uri, body) { handleUnlistChannel(body) }
+
+                session.method == Method.GET && uri == "/channels" ->
+                    withAuth(session, method, uri, body) { channelRulesResponse() }
+
                 else -> jsonError(Response.Status.NOT_FOUND, "not found")
             }
         } catch (e: Exception) {
@@ -110,6 +121,57 @@ class ApprovalHttpServer(
         val requests = database.approvalRequestDAO().getPending().blockingFirst()
             .map(ApprovalRequestDto::from)
         return jsonResponse(Response.Status.OK, Json.encodeToString(PendingRequestsDto.serializer(), PendingRequestsDto(requests)))
+    }
+
+    private fun handleSetChannelRule(body: String): Response {
+        val request = try {
+            Json.decodeFromString<ChannelRuleRequestDto>(body)
+        } catch (e: Exception) {
+            return jsonError(Response.Status.BAD_REQUEST, "invalid request")
+        }
+        val status = try {
+            ChannelListStatus.valueOf(request.status)
+        } catch (e: Exception) {
+            return jsonError(Response.Status.BAD_REQUEST, "invalid status")
+        }
+
+        database.channelRuleDAO().upsertRule(
+            ChannelRuleEntity(
+                serviceId = request.serviceId,
+                channelUrl = request.channelUrl,
+                status = status,
+                setAt = System.currentTimeMillis()
+            )
+        )
+        return jsonResponse(
+            Response.Status.OK,
+            Json.encodeToString(
+                ChannelRuleDto.serializer(),
+                ChannelRuleDto(request.serviceId, request.channelUrl, status.name)
+            )
+        )
+    }
+
+    private fun handleUnlistChannel(body: String): Response {
+        val request = try {
+            Json.decodeFromString<ChannelUnlistRequestDto>(body)
+        } catch (e: Exception) {
+            return jsonError(Response.Status.BAD_REQUEST, "invalid request")
+        }
+        val removed = database.channelRuleDAO().deleteRule(request.serviceId, request.channelUrl) > 0
+        return jsonResponse(
+            Response.Status.OK,
+            Json.encodeToString(UnlistResponseDto.serializer(), UnlistResponseDto(removed))
+        )
+    }
+
+    private fun channelRulesResponse(): Response {
+        val rules = database.channelRuleDAO().getAllRules().blockingFirst()
+            .map { ChannelRuleDto(it.serviceId, it.channelUrl, it.status.name) }
+        return jsonResponse(
+            Response.Status.OK,
+            Json.encodeToString(ChannelRulesResponseDto.serializer(), ChannelRulesResponseDto(rules))
+        )
     }
 
     private fun resolveResponse(
@@ -163,6 +225,21 @@ class ApprovalHttpServer(
 
     @Serializable
     private data class PairResponseDto(val deviceId: String, val sharedSecret: String)
+
+    @Serializable
+    private data class ChannelRuleRequestDto(val serviceId: Int, val channelUrl: String, val status: String)
+
+    @Serializable
+    private data class ChannelUnlistRequestDto(val serviceId: Int, val channelUrl: String)
+
+    @Serializable
+    private data class ChannelRuleDto(val serviceId: Int, val channelUrl: String, val status: String)
+
+    @Serializable
+    private data class ChannelRulesResponseDto(val rules: List<ChannelRuleDto>)
+
+    @Serializable
+    private data class UnlistResponseDto(val removed: Boolean)
 
     companion object {
         private const val BIND_ADDRESS = "0.0.0.0"

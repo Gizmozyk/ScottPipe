@@ -1,7 +1,7 @@
 # 0001: Kid mode architecture
 
-Status: accepted (Phases A, B, C, and D implemented)
-Date: 2026-07-23, updated 2026-07-23 (Phases B, C, and D)
+Status: accepted (Phases A through E implemented)
+Date: 2026-07-23, updated 2026-07-24 (Phases B through E)
 
 ## Context
 
@@ -145,6 +145,49 @@ stops the OS from pre-emptively blocking Kid Mode's inherently plaintext
 local protocol, which has no cert infrastructure by design (see "Same-Wi-Fi
 only, no cloud/push backend" above).
 
+**Phase E's channel rules are one table with a status enum, not a separate
+whitelist and blacklist table.** `ChannelRuleEntity` gained a `status`
+column (`WHITELISTED`/`BLACKLISTED`) instead of introducing a second
+table alongside the existing (previously unused) approved-channels one.
+Two tables would let a channel end up in both lists simultaneously — a
+bug class to guard against in application code — whereas one row per
+channel makes that structurally impossible, and "changing your mind"
+about a channel is just calling the same `upsertRule` again.
+
+**`KidModeGate`'s result became a three-way `GateDecision`
+(`ALLOWED`/`BLOCKED`/`NEEDS_APPROVAL`), not still a boolean.** A
+blacklisted channel needs a decision distinct from both "proceed" and
+"ask a parent" — proceeding would defeat the blacklist, and asking a
+parent would create a pending request nobody needs to act on (the parent
+already made their decision proactively). The channel rule is checked
+*before* subscription/approval status specifically so a blacklist always
+wins even if the kid was somehow already subscribed before the channel
+was blacklisted.
+
+**Feed/search filtering runs inside each screen's existing async loading
+chain, never synchronously inside `handleResult`/`handleNextItems`.**
+`NewPipeDatabase` is built without `.allowMainThreadQueries()`, and those
+callback methods run on the main thread (after `.observeOn(AndroidSchedulers.mainThread())`)
+— a blocking Room read there would crash. `KidModeContentFilter` is
+instead spliced in as a `.map` step while still on `Schedulers.io()`, so
+the three integration points (`BaseListInfoFragment`, `SearchFragment`,
+`FeedViewModel`) needed no structural change to their existing
+result-handling methods, only their upstream data-loading chains.
+
+**The filter loads one snapshot per fetch (all rules + all denied video
+URLs), not a query per list item.** The number of rules/denials a parent
+has actually set is expected to be small (dozens at most, not thousands),
+so one `Flowable<List<...>>` read per screen load, matched in-memory
+against each item, is simpler and cheaper than a per-item DB round trip.
+
+**Reused `KidModeHmac`/the existing HTTP auth pattern for the three new
+channel-rule endpoints, no new auth mechanism.** `POST /channels/rule`,
+`POST /channels/unlist`, and `GET /channels` are authenticated exactly
+like `/approve`/`/deny`/`/pending-requests` already were — same
+`withAuth` wrapper, same `KidModeApiClient` request-signing helpers —
+since nothing about proactively setting a rule needs different trust
+assumptions than approving a reactive request.
+
 ## Consequences
 
 - Remote approval now works from a genuinely separate device (Phase D's
@@ -166,3 +209,15 @@ only, no cloud/push backend" above).
 - Kid Mode is a single global device-level switch — NewPipe has no user
   profile concept today, so per-kid profiles on a shared device aren't
   supported and would be a separate, larger effort.
+- Blacklisting a channel empties its own "Videos" tab if visited directly
+  (every video there is filtered by the same uploader-URL check that
+  hides it everywhere else). This is intended, not a bug, but is worth
+  knowing so it isn't "fixed" by accident later.
+- Phase E's gating/filtering was verified manually against real YouTube
+  data (not just synthetic test fixtures) end-to-end: blacklisting a
+  channel removed it from live search results and its own video tab,
+  blocked its subscribe button with no dialog and no pending request
+  created, and — the scenario specifically asked for — blacklisting a
+  channel the kid was *already subscribed to* removed its videos from the
+  subscriptions feed on the next real fetch, confirmed reversible by
+  un-listing the rule. See `wiki/testing.md`.

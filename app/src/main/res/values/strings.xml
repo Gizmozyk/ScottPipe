@@ -175,6 +175,7 @@
     <string name="kid_mode_deny">Deny</string>
     <string name="kid_mode_denied_toast">Request denied</string>
     <string name="kid_mode_subscribed_toast">Subscribed to %1$s</string>
+    <string name="kid_mode_channel_blocked_toast">This channel is blocked</string>
     <string name="kid_mode_pair_device_title">Pair a parent device</string>
     <string name="kid_mode_pair_device_summary">Show a code a parent device can use to pair over the same Wi-Fi</string>
     <string name="kid_mode_pairing_code_title">Pairing code</string>
@@ -211,6 +212,17 @@
     <string name="parent_mode_pairing_failed">Pairing failed: %1$s</string>
     <string name="parent_mode_request_type_play">Play video</string>
     <string name="parent_mode_request_type_subscribe">Subscribe to channel</string>
+    <string name="parent_mode_manage_channels">Manage channels</string>
+    <string name="parent_mode_channels_title">Manage channels</string>
+    <string name="parent_mode_no_channel_rules">No channels whitelisted or blacklisted yet</string>
+    <string name="parent_mode_add_channel">Add channel</string>
+    <string name="parent_mode_add_channel_dialog_title">Add channel</string>
+    <string name="parent_mode_add_channel_url_hint">Channel URL</string>
+    <string name="parent_mode_whitelist">Whitelist</string>
+    <string name="parent_mode_blacklist">Blacklist</string>
+    <string name="parent_mode_remove_channel_rule_title">Remove this rule?</string>
+    <string name="parent_mode_remove_channel_rule_message">\"%1$s\" will go back to needing per-request approval</string>
+    <string name="parent_mode_invalid_channel_url">Enter a valid channel URL</string>
     <string name="background_player_playing_toast">Playing in background</string>
     <string name="popup_playing_toast">Playing in popup mode</string>
     <string name="content">Content</string>

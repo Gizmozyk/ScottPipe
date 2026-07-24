@@ -7,6 +7,7 @@ import java.time.ZoneOffset
 import org.schabi.newpipe.extractor.stream.StreamType
 import org.schabi.newpipe.kidmode.db.ApprovalRequestStatus
 import org.schabi.newpipe.kidmode.db.ApprovalRequestType
+import org.schabi.newpipe.kidmode.db.ChannelListStatus
 import org.schabi.newpipe.local.subscription.FeedGroupIcon
 
 class Converters {
@@ -69,6 +70,16 @@ class Converters {
 
     @TypeConverter
     fun stringOf(status: ApprovalRequestStatus): String {
+        return status.name
+    }
+
+    @TypeConverter
+    fun channelListStatusOf(value: String): ChannelListStatus {
+        return ChannelListStatus.valueOf(value)
+    }
+
+    @TypeConverter
+    fun stringOf(status: ChannelListStatus): String {
         return status.name
     }
 }

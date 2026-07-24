@@ -29,6 +29,17 @@ abstract class ApprovalRequestDAO {
     @Query("SELECT * FROM kid_mode_approval_requests WHERE status = 'PENDING' ORDER BY created_at ASC")
     abstract fun getPending(): Flowable<List<ApprovalRequestEntity>>
 
+    /**
+     * URLs of videos an individual `PLAY_VIDEO` request has been denied for -- used by
+     * [org.schabi.newpipe.kidmode.KidModeContentFilter] to hide a denied video from feeds/search
+     * even when its whole channel isn't blacklisted.
+     */
+    @Query(
+        "SELECT target_url FROM kid_mode_approval_requests " +
+            "WHERE request_type = 'PLAY_VIDEO' AND status = 'DENIED'"
+    )
+    abstract fun getDeniedVideoUrls(): Flowable<List<String>>
+
     @Query(
         "UPDATE kid_mode_approval_requests SET status = :status, resolved_at = :resolvedAt " +
             "WHERE uid = :requestId"

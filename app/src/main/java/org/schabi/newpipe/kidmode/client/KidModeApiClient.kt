@@ -47,6 +47,8 @@ class KidModeApiClient {
         val createdAt: Long
     )
 
+    data class RemoteChannelRule(val serviceId: Int, val channelUrl: String, val status: String)
+
     /** Thrown for any non-2xx response; [status] is the HTTP status code. */
     class KidModeApiException(val status: Int, message: String) : Exception(message)
 
@@ -76,6 +78,54 @@ class KidModeApiClient {
 
     fun deny(host: String, port: Int, deviceId: String, secret: ByteArray, id: Long): Single<RemoteApprovalRequest> {
         return resolve(host, port, "/deny/$id", deviceId, secret)
+    }
+
+    fun setChannelRule(
+        host: String,
+        port: Int,
+        deviceId: String,
+        secret: ByteArray,
+        serviceId: Int,
+        channelUrl: String,
+        status: String
+    ): Single<RemoteChannelRule> {
+        return Single.fromCallable {
+            val body = Json.encodeToString(
+                ChannelRuleRequestDto.serializer(),
+                ChannelRuleRequestDto(serviceId, channelUrl, status)
+            )
+            val request = signedRequest(host, port, "POST", "/channels/rule", body, deviceId, secret)
+                .post(body.toRequestBody(JSON_MEDIA_TYPE))
+                .build()
+            Json.decodeFromString<ChannelRuleDto>(execute(request)).toRemoteChannelRule()
+        }.subscribeOn(Schedulers.io())
+    }
+
+    fun unlistChannel(
+        host: String,
+        port: Int,
+        deviceId: String,
+        secret: ByteArray,
+        serviceId: Int,
+        channelUrl: String
+    ): Single<Boolean> {
+        return Single.fromCallable {
+            val body = Json.encodeToString(
+                ChannelUnlistRequestDto.serializer(),
+                ChannelUnlistRequestDto(serviceId, channelUrl)
+            )
+            val request = signedRequest(host, port, "POST", "/channels/unlist", body, deviceId, secret)
+                .post(body.toRequestBody(JSON_MEDIA_TYPE))
+                .build()
+            Json.decodeFromString<UnlistResponseDto>(execute(request)).removed
+        }.subscribeOn(Schedulers.io())
+    }
+
+    fun channelRules(host: String, port: Int, deviceId: String, secret: ByteArray): Single<List<RemoteChannelRule>> {
+        return Single.fromCallable {
+            val request = signedRequest(host, port, "GET", "/channels", "", deviceId, secret).build()
+            Json.decodeFromString<ChannelRulesResponseDto>(execute(request)).rules.map { it.toRemoteChannelRule() }
+        }.subscribeOn(Schedulers.io())
     }
 
     private fun resolve(host: String, port: Int, path: String, deviceId: String, secret: ByteArray): Single<RemoteApprovalRequest> {
@@ -122,6 +172,8 @@ class KidModeApiClient {
 
     private fun ApprovalRequestDto.toRemoteApprovalRequest() = RemoteApprovalRequest(id, type, status, title, channelUrl, createdAt)
 
+    private fun ChannelRuleDto.toRemoteChannelRule() = RemoteChannelRule(serviceId, channelUrl, status)
+
     @Serializable
     private data class PairRequestDto(val deviceName: String, val code: String)
 
@@ -143,6 +195,21 @@ class KidModeApiClient {
 
     @Serializable
     private data class ErrorDto(val error: String)
+
+    @Serializable
+    private data class ChannelRuleRequestDto(val serviceId: Int, val channelUrl: String, val status: String)
+
+    @Serializable
+    private data class ChannelUnlistRequestDto(val serviceId: Int, val channelUrl: String)
+
+    @Serializable
+    private data class ChannelRuleDto(val serviceId: Int, val channelUrl: String, val status: String)
+
+    @Serializable
+    private data class ChannelRulesResponseDto(val rules: List<ChannelRuleDto>)
+
+    @Serializable
+    private data class UnlistResponseDto(val removed: Boolean)
 
     companion object {
         private val JSON_MEDIA_TYPE = "application/json".toMediaType()

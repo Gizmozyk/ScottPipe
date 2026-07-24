@@ -33,8 +33,8 @@ import org.schabi.newpipe.database.subscription.SubscriptionDAO
 import org.schabi.newpipe.database.subscription.SubscriptionEntity
 import org.schabi.newpipe.kidmode.db.ApprovalRequestDAO
 import org.schabi.newpipe.kidmode.db.ApprovalRequestEntity
-import org.schabi.newpipe.kidmode.db.ApprovedChannelDAO
-import org.schabi.newpipe.kidmode.db.ApprovedChannelEntity
+import org.schabi.newpipe.kidmode.db.ChannelRuleDAO
+import org.schabi.newpipe.kidmode.db.ChannelRuleEntity
 import org.schabi.newpipe.kidmode.db.PairedDeviceDAO
 import org.schabi.newpipe.kidmode.db.PairedDeviceEntity
 import org.schabi.newpipe.kidmode.db.ParentPairingDAO
@@ -42,7 +42,7 @@ import org.schabi.newpipe.kidmode.db.ParentPairingEntity
 
 @TypeConverters(Converters::class)
 @Database(
-    version = Migrations.DB_VER_12,
+    version = Migrations.DB_VER_13,
     entities = [
         SubscriptionEntity::class,
         SearchHistoryEntry::class,
@@ -57,7 +57,7 @@ import org.schabi.newpipe.kidmode.db.ParentPairingEntity
         FeedGroupSubscriptionEntity::class,
         FeedLastUpdatedEntity::class,
         ApprovalRequestEntity::class,
-        ApprovedChannelEntity::class,
+        ChannelRuleEntity::class,
         PairedDeviceEntity::class,
         ParentPairingEntity::class
     ]
@@ -74,7 +74,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun streamStateDAO(): StreamStateDAO
     abstract fun subscriptionDAO(): SubscriptionDAO
     abstract fun approvalRequestDAO(): ApprovalRequestDAO
-    abstract fun approvedChannelDAO(): ApprovedChannelDAO
+    abstract fun channelRuleDAO(): ChannelRuleDAO
     abstract fun pairedDeviceDAO(): PairedDeviceDAO
     abstract fun parentPairingDAO(): ParentPairingDAO
 

@@ -159,3 +159,59 @@ See [0001-kid-mode-architecture.md](../adr/0001-kid-mode-architecture.md)
 for why these phases were ordered this way, and
 [testing.md](../testing.md) for how Phase D was verified end-to-end
 without needing real hardware yet.
+
+## Built: proactive channel whitelist/blacklist and feed filtering (Phase E)
+
+Inspired by the Safe Vision app: a parent can now decide about a channel
+*before* the kid ever asks, and a blacklisted channel (or an individually
+denied video) stops showing up in feeds/search at all, not just when
+tapped.
+
+**Whitelist/blacklist is one table, not two.** `ChannelRuleEntity`
+(`kid_mode_channel_rules`, previously `ApprovedChannelEntity`/
+`kid_mode_approved_channels` — checked by `KidModeGate` since Phase A but
+never actually written to until now) has a `status` column
+(`WHITELISTED`/`BLACKLISTED`) instead of a separate blacklist table, so a
+channel can never end up in both states — flipping it is just setting the
+rule again (`ChannelRuleDAO.upsertRule`, `REPLACE` on the unique
+service+URL index).
+
+**`KidModeGate`'s gate is now three-way**, not a boolean: `GateDecision.ALLOWED`
+/ `BLOCKED` / `NEEDS_APPROVAL`. The channel rule is checked *first*, before
+subscription/approval status — a blacklisted channel is `BLOCKED`
+immediately (a plain "This channel is blocked" toast, no dialog, and
+critically **no pending `ApprovalRequestEntity` row is ever created** for
+it, so Parent Mode's request list never fills up with things nobody needs
+to act on); a whitelisted one is `ALLOWED` immediately for both playback
+and subscribing, no separate approval needed.
+
+**Feed/search filtering (`KidModeContentFilter`)** hides blacklisted
+channels and individually-denied videos (denial data already existed —
+`kid_mode_approval_requests` rows with `DENIED` status) from three
+places: `BaseListInfoFragment` (covers trending/kiosk, channel tabs,
+playlists, and the watch page's related videos — all in one shared
+loading-chain change, since they all funnel through the same
+`startLoading()`/`loadMoreItems()`), `SearchFragment` (a separate direct
+`BaseListFragment` subclass, its own two loading chains), and
+`FeedViewModel` (the subscriptions feed's local cache query) — covering
+the case where a channel gets blacklisted *after* the kid was already
+subscribed to it. The filter is spliced into each existing network-loading
+`Single`/`Observable` chain (a `.map` between `subscribeOn(Schedulers.io())`
+and `observeOn(mainThread)`), not called synchronously inside
+`handleResult`/`handleNextItems` — `NewPipeDatabase` has no
+`allowMainThreadQueries()`, so a Room read there would crash.
+
+**A blacklisted channel's own "Videos" tab ends up empty** when visited
+directly, since every one of its own videos is filtered by the same
+uploader-URL check that hides them elsewhere — confirmed during manual
+testing, not something separately special-cased. This is the intended
+safety behavior (no way to browse a blacklisted channel's catalog even by
+landing directly on its page), not a bug, even though it looks unusual.
+
+**Managing rules remotely.** Parent Mode → a paired device → "Manage
+channels" (`ParentModeChannelsActivity`) lists current rules and lets the
+parent paste a channel URL to whitelist or blacklist it (three-button
+dialog: Cancel / Blacklist / Whitelist), or remove a rule (with
+confirmation, back to needing per-request approval). New authenticated
+endpoints mirror the existing approve/deny pattern: `POST /channels/rule`,
+`POST /channels/unlist`, `GET /channels`.

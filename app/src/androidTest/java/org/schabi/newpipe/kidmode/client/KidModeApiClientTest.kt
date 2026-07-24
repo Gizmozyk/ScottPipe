@@ -134,4 +134,64 @@ class KidModeApiClientTest {
 
         assertEquals("DENIED", denied.status)
     }
+
+    @Test
+    fun setChannelRuleStoresAndReturnsTheRule() {
+        val result = pair()
+        val secret = Base64.decode(result.sharedSecretBase64, Base64.NO_WRAP)
+
+        val rule = client.setChannelRule(
+            host,
+            port,
+            result.deviceId,
+            secret,
+            0,
+            "https://youtube.com/channel/1",
+            "WHITELISTED"
+        ).blockingGet()
+
+        assertEquals("WHITELISTED", rule.status)
+        assertEquals("https://youtube.com/channel/1", rule.channelUrl)
+    }
+
+    @Test
+    fun channelRulesListsWhatWasSet() {
+        val result = pair()
+        val secret = Base64.decode(result.sharedSecretBase64, Base64.NO_WRAP)
+        client.setChannelRule(
+            host,
+            port,
+            result.deviceId,
+            secret,
+            0,
+            "https://youtube.com/channel/1",
+            "BLACKLISTED"
+        ).blockingGet()
+
+        val rules = client.channelRules(host, port, result.deviceId, secret).blockingGet()
+
+        assertEquals(1, rules.size)
+        assertEquals("BLACKLISTED", rules[0].status)
+    }
+
+    @Test
+    fun unlistChannelRemovesTheRule() {
+        val result = pair()
+        val secret = Base64.decode(result.sharedSecretBase64, Base64.NO_WRAP)
+        client.setChannelRule(
+            host,
+            port,
+            result.deviceId,
+            secret,
+            0,
+            "https://youtube.com/channel/1",
+            "WHITELISTED"
+        ).blockingGet()
+
+        val removed = client.unlistChannel(host, port, result.deviceId, secret, 0, "https://youtube.com/channel/1")
+            .blockingGet()
+
+        assertTrue(removed)
+        assertEquals(0, client.channelRules(host, port, result.deviceId, secret).blockingGet().size)
+    }
 }

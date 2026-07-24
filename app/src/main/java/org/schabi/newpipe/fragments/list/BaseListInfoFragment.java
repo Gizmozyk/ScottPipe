@@ -20,6 +20,7 @@ import org.schabi.newpipe.extractor.ListExtractor;
 import org.schabi.newpipe.extractor.ListInfo;
 import org.schabi.newpipe.extractor.Page;
 import org.schabi.newpipe.extractor.exceptions.ContentNotSupportedException;
+import org.schabi.newpipe.kidmode.KidModeContentFilter;
 import org.schabi.newpipe.util.Constants;
 import org.schabi.newpipe.views.NewPipeRecyclerView;
 
@@ -145,6 +146,11 @@ public abstract class BaseListInfoFragment<I extends InfoItem, L extends ListInf
         }
         currentWorker = loadResult(forceLoad)
                 .subscribeOn(Schedulers.io())
+                .map((@NonNull final L result) -> {
+                    result.setRelatedItems(KidModeContentFilter.INSTANCE
+                            .filterItems(requireContext(), result.getRelatedItems()));
+                    return result;
+                })
                 .observeOn(AndroidSchedulers.mainThread())
                 .subscribe((@NonNull final L result) -> {
                     isLoading.set(false);
@@ -177,6 +183,12 @@ public abstract class BaseListInfoFragment<I extends InfoItem, L extends ListInf
 
         currentWorker = loadMoreItemsLogic()
                 .subscribeOn(Schedulers.io())
+                .map((@NonNull final ListExtractor.InfoItemsPage<I> result) ->
+                        new ListExtractor.InfoItemsPage<>(
+                                KidModeContentFilter.INSTANCE.filterItems(
+                                        requireContext(), result.getItems()),
+                                result.getNextPage(),
+                                result.getErrors()))
                 .observeOn(AndroidSchedulers.mainThread())
                 .doFinally(this::allowDownwardFocusScroll)
                 .subscribe(infoItemsPage -> {
