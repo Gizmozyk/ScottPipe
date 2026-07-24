@@ -29,6 +29,12 @@
         app:iconSpaceReserved="false" />
 
     <PreferenceScreen
+        android:fragment="org.schabi.newpipe.settings.KidModeSettingsFragment"
+        android:icon="@drawable/ic_child_care"
+        android:title="@string/settings_category_kid_mode_title"
+        app:iconSpaceReserved="false" />
+
+    <PreferenceScreen
         android:fragment="org.schabi.newpipe.settings.ContentSettingsFragment"
         android:icon="@drawable/ic_language"
         android:title="@string/content"

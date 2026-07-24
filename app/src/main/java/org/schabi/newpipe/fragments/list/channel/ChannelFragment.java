@@ -42,6 +42,8 @@ import org.schabi.newpipe.extractor.exceptions.ContentNotSupportedException;
 import org.schabi.newpipe.extractor.linkhandler.ListLinkHandler;
 import org.schabi.newpipe.fragments.BaseStateFragment;
 import org.schabi.newpipe.fragments.detail.TabAdapter;
+import org.schabi.newpipe.kidmode.KidModeGate;
+import org.schabi.newpipe.kidmode.ui.ApprovalWaitingDialogFragment;
 import org.schabi.newpipe.ktx.AnimationType;
 import org.schabi.newpipe.local.feed.notifications.NotificationHelper;
 import org.schabi.newpipe.local.subscription.SubscriptionManager;
@@ -287,7 +289,16 @@ public class ChannelFragment extends BaseStateFragment<ChannelInfo>
 
     private Function<Object, Object> mapOnSubscribe(final SubscriptionEntity subscription) {
         return (@NonNull final Object o) -> {
-            subscriptionManager.insertSubscription(subscription);
+            final KidModeGate kidModeGate = new KidModeGate(requireContext());
+            if (kidModeGate.canSubscribe()) {
+                subscriptionManager.insertSubscription(subscription);
+            } else {
+                final long requestId = kidModeGate.requestSubscribeApproval(subscription)
+                        .blockingGet();
+                AndroidSchedulers.mainThread().scheduleDirect(() ->
+                        ApprovalWaitingDialogFragment.newInstance(requestId)
+                                .show(getFM(), ApprovalWaitingDialogFragment.TAG));
+            }
             return o;
         };
     }

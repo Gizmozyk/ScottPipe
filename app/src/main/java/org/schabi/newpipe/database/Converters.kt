@@ -5,6 +5,8 @@ import java.time.Instant
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import org.schabi.newpipe.extractor.stream.StreamType
+import org.schabi.newpipe.kidmode.db.ApprovalRequestStatus
+import org.schabi.newpipe.kidmode.db.ApprovalRequestType
 import org.schabi.newpipe.local.subscription.FeedGroupIcon
 
 class Converters {
@@ -48,5 +50,25 @@ class Converters {
     @TypeConverter
     fun feedGroupIconOf(id: Int): FeedGroupIcon {
         return FeedGroupIcon.entries.first { it.id == id }
+    }
+
+    @TypeConverter
+    fun approvalRequestTypeOf(value: String): ApprovalRequestType {
+        return ApprovalRequestType.valueOf(value)
+    }
+
+    @TypeConverter
+    fun stringOf(requestType: ApprovalRequestType): String {
+        return requestType.name
+    }
+
+    @TypeConverter
+    fun approvalRequestStatusOf(value: String): ApprovalRequestStatus {
+        return ApprovalRequestStatus.valueOf(value)
+    }
+
+    @TypeConverter
+    fun stringOf(status: ApprovalRequestStatus): String {
+        return status.name
     }
 }

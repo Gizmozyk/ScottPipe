@@ -29,6 +29,7 @@ object Migrations {
     const val DB_VER_7 = 7
     const val DB_VER_8 = 8
     const val DB_VER_9 = 9
+    const val DB_VER_10 = 10
 
     private val TAG = Migrations::class.java.getName()
     private val isDebug = MainActivity.DEBUG
@@ -347,5 +348,33 @@ object Migrations {
         } finally {
             db.endTransaction()
         }
+    }
+
+    val MIGRATION_9_10 = Migration(DB_VER_9, DB_VER_10) { db ->
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `kid_mode_approval_requests` (" +
+                "`uid` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                "`request_type` TEXT NOT NULL, " +
+                "`service_id` INTEGER NOT NULL, " +
+                "`target_url` TEXT NOT NULL, " +
+                "`target_title` TEXT NOT NULL, " +
+                "`channel_url` TEXT, " +
+                "`status` TEXT NOT NULL, " +
+                "`created_at` INTEGER NOT NULL, " +
+                "`resolved_at` INTEGER)"
+        )
+
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `kid_mode_approved_channels` (" +
+                "`uid` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                "`service_id` INTEGER NOT NULL, " +
+                "`url` TEXT NOT NULL, " +
+                "`approved_at` INTEGER NOT NULL)"
+        )
+        db.execSQL(
+            "CREATE UNIQUE INDEX IF NOT EXISTS " +
+                "`index_kid_mode_approved_channels_service_id_url` " +
+                "ON `kid_mode_approved_channels` (`service_id`, `url`)"
+        )
     }
 }

@@ -17,6 +17,8 @@ import org.schabi.newpipe.database.playlist.model.PlaylistEntity
 import org.schabi.newpipe.database.playlist.model.PlaylistRemoteEntity
 import org.schabi.newpipe.extractor.ServiceList
 import org.schabi.newpipe.extractor.stream.StreamType
+import org.schabi.newpipe.kidmode.db.ApprovalRequestStatus
+import org.schabi.newpipe.kidmode.db.ApprovalRequestType
 
 @RunWith(AndroidJUnit4::class)
 class DatabaseMigrationTest {
@@ -128,6 +130,13 @@ class DatabaseMigrationTest {
             Migrations.MIGRATION_8_9
         )
 
+        testHelper.runMigrationsAndValidate(
+            AppDatabase.DATABASE_NAME,
+            Migrations.DB_VER_10,
+            true,
+            Migrations.MIGRATION_9_10
+        )
+
         val migratedDatabaseV3 = getMigratedDatabase()
         val listFromDB = migratedDatabaseV3.streamDAO().getAll().blockingFirst()
 
@@ -224,6 +233,13 @@ class DatabaseMigrationTest {
             Migrations.MIGRATION_8_9
         )
 
+        testHelper.runMigrationsAndValidate(
+            AppDatabase.DATABASE_NAME,
+            Migrations.DB_VER_10,
+            true,
+            Migrations.MIGRATION_9_10
+        )
+
         val migratedDatabaseV8 = getMigratedDatabase()
         val listFromDB = migratedDatabaseV8.searchHistoryDAO().getAll().blockingFirst()
 
@@ -296,6 +312,13 @@ class DatabaseMigrationTest {
             Migrations.MIGRATION_8_9
         )
 
+        testHelper.runMigrationsAndValidate(
+            AppDatabase.DATABASE_NAME,
+            Migrations.DB_VER_10,
+            true,
+            Migrations.MIGRATION_9_10
+        )
+
         val migratedDatabaseV9 = getMigratedDatabase()
         var localListFromDB = migratedDatabaseV9.playlistDAO().getAll().blockingFirst()
         var remoteListFromDB = migratedDatabaseV9.playlistRemoteDAO().getAll().blockingFirst()
@@ -335,6 +358,48 @@ class DatabaseMigrationTest {
         assertEquals(2, remoteListFromDB.size)
         assertEquals(remoteUid3, remoteListFromDB[1].uid)
         assertEquals(-1, remoteListFromDB[1].displayIndex)
+    }
+
+    @Test
+    fun migrateDatabaseFrom9to10() {
+        testHelper.createDatabase(AppDatabase.DATABASE_NAME, Migrations.DB_VER_9).close()
+
+        testHelper.runMigrationsAndValidate(
+            AppDatabase.DATABASE_NAME,
+            Migrations.DB_VER_10,
+            true,
+            Migrations.MIGRATION_9_10
+        )
+
+        val migratedDatabaseV10 = getMigratedDatabase()
+
+        val requestUid = migratedDatabaseV10.approvalRequestDAO().insert(
+            org.schabi.newpipe.kidmode.db.ApprovalRequestEntity(
+                requestType = ApprovalRequestType.PLAY_VIDEO,
+                serviceId = DEFAULT_SERVICE_ID,
+                targetUrl = DEFAULT_URL,
+                targetTitle = DEFAULT_TITLE,
+                channelUrl = DEFAULT_SECOND_URL,
+                createdAt = 1L
+            )
+        )
+        val requestFromDb = migratedDatabaseV10.approvalRequestDAO()
+            .getById(requestUid)
+            .blockingFirst()
+        assertEquals(ApprovalRequestStatus.PENDING, requestFromDb.status)
+        assertEquals(DEFAULT_URL, requestFromDb.targetUrl)
+
+        migratedDatabaseV10.approvedChannelDAO().insert(
+            org.schabi.newpipe.kidmode.db.ApprovedChannelEntity(
+                serviceId = DEFAULT_SERVICE_ID,
+                channelUrl = DEFAULT_SECOND_URL,
+                approvedAt = 1L
+            )
+        )
+        val approvedChannel = migratedDatabaseV10.approvedChannelDAO()
+            .isApproved(DEFAULT_SERVICE_ID, DEFAULT_SECOND_URL)
+            .blockingGet()
+        assertNotEquals(null, approvedChannel)
     }
 
     private fun getMigratedDatabase(): AppDatabase {

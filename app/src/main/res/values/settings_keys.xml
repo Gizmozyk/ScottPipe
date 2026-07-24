@@ -1513,4 +1513,7 @@
         <item>@string/image_quality_medium_key</item>
         <item>@string/image_quality_high_key</item>
     </string-array>
+
+    <!-- Kid mode -->
+    <string name="kid_mode_enabled_key">kid_mode_enabled</string>
 </resources>

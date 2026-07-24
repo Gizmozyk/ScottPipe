@@ -28,6 +28,8 @@ import org.schabi.newpipe.fragments.OnScrollBelowItemsListener;
 import org.schabi.newpipe.info_list.InfoListAdapter;
 import org.schabi.newpipe.info_list.ItemViewMode;
 import org.schabi.newpipe.info_list.dialog.InfoItemDialog;
+import org.schabi.newpipe.kidmode.KidModeGate;
+import org.schabi.newpipe.kidmode.ui.ApprovalWaitingDialogFragment;
 import org.schabi.newpipe.util.NavigationHelper;
 import org.schabi.newpipe.util.OnClickGesture;
 import org.schabi.newpipe.util.StateSaver;
@@ -38,6 +40,9 @@ import java.util.List;
 import java.util.Queue;
 import java.util.function.Supplier;
 
+import io.reactivex.rxjava3.android.schedulers.AndroidSchedulers;
+import io.reactivex.rxjava3.disposables.CompositeDisposable;
+
 public abstract class BaseListFragment<I, N> extends BaseStateFragment<I>
         implements ListViewContract<I, N>, StateSaver.WriteRead,
         SharedPreferences.OnSharedPreferenceChangeListener {
@@ -46,6 +51,8 @@ public abstract class BaseListFragment<I, N> extends BaseStateFragment<I>
 
     private boolean useDefaultStateSaving = true;
     private int updateFlags = 0;
+
+    private final CompositeDisposable kidModeDisposables = new CompositeDisposable();
 
     /*//////////////////////////////////////////////////////////////////////////
     // Views
@@ -84,6 +91,7 @@ public abstract class BaseListFragment<I, N> extends BaseStateFragment<I>
         }
         PreferenceManager.getDefaultSharedPreferences(activity)
                 .unregisterOnSharedPreferenceChangeListener(this);
+        kidModeDisposables.clear();
     }
 
     @Override
@@ -375,9 +383,33 @@ public abstract class BaseListFragment<I, N> extends BaseStateFragment<I>
 
     private void onStreamSelected(final StreamInfoItem selectedItem) {
         onItemSelected(selectedItem);
-        NavigationHelper.openVideoDetailFragment(requireContext(), getFM(),
-                selectedItem.getServiceId(), selectedItem.getUrl(), selectedItem.getName(),
-                null, false);
+
+        kidModeDisposables.add(
+                new KidModeGate(requireContext())
+                        .canPlay(selectedItem.getServiceId(), selectedItem.getUploaderUrl())
+                        .observeOn(AndroidSchedulers.mainThread())
+                        .subscribe(canPlay -> {
+                            if (canPlay) {
+                                NavigationHelper.openVideoDetailFragment(requireContext(), getFM(),
+                                        selectedItem.getServiceId(), selectedItem.getUrl(),
+                                        selectedItem.getName(), null, false);
+                            } else {
+                                requestPlayApproval(selectedItem);
+                            }
+                        })
+        );
+    }
+
+    private void requestPlayApproval(final StreamInfoItem selectedItem) {
+        kidModeDisposables.add(
+                new KidModeGate(requireContext())
+                        .requestPlayApproval(selectedItem.getServiceId(), selectedItem.getUrl(),
+                                selectedItem.getName(), selectedItem.getUploaderUrl())
+                        .observeOn(AndroidSchedulers.mainThread())
+                        .subscribe(requestId ->
+                                ApprovalWaitingDialogFragment.newInstance(requestId)
+                                        .show(getFM(), ApprovalWaitingDialogFragment.TAG))
+        );
     }
 
     protected void onScrollToBottom() {
