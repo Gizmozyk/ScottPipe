@@ -1,7 +1,8 @@
 # 0001: Kid mode architecture
 
-Status: accepted (Phases A through E implemented)
-Date: 2026-07-23, updated 2026-07-24 (Phases B through E)
+Status: accepted (Phases A through E implemented, plus a pending-approval
+badge and QR-code pairing)
+Date: 2026-07-23, updated 2026-07-24 (Phases B through E, badge, QR pairing)
 
 ## Context
 
@@ -187,6 +188,31 @@ like `/approve`/`/deny`/`/pending-requests` already were — same
 `withAuth` wrapper, same `KidModeApiClient` request-signing helpers —
 since nothing about proactively setting a rule needs different trust
 assumptions than approving a reactive request.
+
+**ZXing over ML Kit for QR pairing.** ML Kit barcode scanning depends on
+Play Services infrastructure even in its "unbundled" form, conflicting
+with this project's no-cloud/no-Google-dependency stance (the same
+reason BLE-based discovery via Nearby Connections API was considered and
+rejected in favor of QR codes at all — see `wiki/features/kid-mode.md`).
+`com.google.zxing:core` + `com.journeyapps:zxing-android-embedded` have
+no Play Services dependency at all.
+
+**`ConnectivityManager`/`LinkProperties` over `WifiManager.connectionInfo`
+for the kid device's own LAN IP.** `WifiManager` needs `ACCESS_WIFI_STATE`,
+a permission this app has consistently avoided adding (matching the NSD
+advertiser/discoverer classes' own precedent), and only reports an
+address when associated to Wi-Fi in station mode — `ConnectivityManager`
+correctly reflects whatever the active network actually is, matching
+what the `0.0.0.0`-bound `ApprovalHttpServer` is actually reachable on.
+
+**The QR payload carries a `type` discriminator.** Unlike this
+codebase's other DTOs (which only ever round-trip through an
+authenticated HTTP channel where the shape is already trusted), a QR
+code can be scanned from *any* source, including an unrelated code that
+happens to decode as JSON with a similar shape. `KidModePairingQrCode.decode`
+returns `null` rather than throwing for a `type` mismatch, non-JSON
+input, or wrong shape, so a wayward scan degrades to a plain "not a
+pairing code" message instead of a crash or a confusing pairing attempt.
 
 ## Consequences
 

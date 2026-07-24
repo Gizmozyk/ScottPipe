@@ -181,6 +181,8 @@
     <string name="kid_mode_pair_device_summary">Show a code a parent device can use to pair over the same Wi-Fi</string>
     <string name="kid_mode_pairing_code_title">Pairing code</string>
     <string name="kid_mode_pairing_code_message">Enter this code on the parent\'s device within 5 minutes:\n\n%1$s</string>
+    <string name="kid_mode_pairing_qr_hint">Or scan this from a parent\'s device: Parent Mode → Scan QR code</string>
+    <string name="kid_mode_pairing_qr_content_description">QR code for pairing a parent device</string>
     <string name="kid_mode_pairing_unavailable">Kid mode must be on to pair a device</string>
     <string name="kid_mode_paired_devices_title">Paired devices</string>
     <string name="kid_mode_no_paired_devices">No devices paired yet</string>
@@ -194,6 +196,9 @@
     <string name="parent_mode_discovered_devices_header">Discovered devices</string>
     <string name="parent_mode_no_discovered_devices">No devices found yet. Make sure Kid Mode is on and both devices are on the same Wi-Fi</string>
     <string name="parent_mode_connect_manually">Connect manually</string>
+    <string name="parent_mode_scan_qr_code">Scan QR code</string>
+    <string name="parent_mode_scan_qr_prompt">Point the camera at the code shown on your kid\'s device</string>
+    <string name="parent_mode_qr_invalid">That doesn\'t look like a ScottPipe pairing code</string>
     <string name="parent_mode_pair_dialog_title">Pair with %1$s</string>
     <string name="parent_mode_pair_dialog_code_hint">Pairing code</string>
     <string name="parent_mode_manual_connect_title">Connect manually</string>

@@ -27,6 +27,7 @@ espresso = "3.7.0"
 exoplayer = "2.19.1"
 fragment = "1.8.9"
 groupie = "2.10.1"
+journeyapps = "4.3.0"
 jsoup = "1.22.2"
 junit = "4.13.2"
 junit-ext = "1.3.0"
@@ -78,6 +79,7 @@ teamnewpipe-newpipe-extractor = "4de221bf67ec0bf8dbdf573fbc9d4412a8561cb0"
 viewpager2 = "1.1.0"
 webkit = "1.15.0" # New versions require minSdk 24
 work = "2.11.2"
+zxing = "3.5.3"
 
 [libraries]
 acra-core = { module = "ch.acra:acra-core", version.ref = "acra" }
@@ -127,6 +129,7 @@ google-exoplayer-hls = { module = "com.google.android.exoplayer:exoplayer-hls", 
 google-exoplayer-mediasession = { module = "com.google.android.exoplayer:extension-mediasession", version.ref = "exoplayer" }
 google-exoplayer-smoothstreaming = { module = "com.google.android.exoplayer:exoplayer-smoothstreaming", version.ref = "exoplayer" }
 google-exoplayer-ui = { module = "com.google.android.exoplayer:exoplayer-ui", version.ref = "exoplayer" }
+google-zxing-core = { module = "com.google.zxing:core", version.ref = "zxing" }
 jakewharton-phoenix = { module = "com.jakewharton:process-phoenix", version.ref = "phoenix" }
 jakewharton-rxbinding = { module = "com.jakewharton.rxbinding4:rxbinding", version.ref = "rxbinding" }
 jetbrains-compose-foundation = { module = "org.jetbrains.compose.foundation:foundation", version.ref = "multiplatform" }
@@ -141,6 +144,7 @@ jetbrains-coroutines-swing = { module = "org.jetbrains.kotlinx:kotlinx-coroutine
 jetbrains-lifecycle-navigation3 = { module = "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-navigation3", version.ref = "lifecycle" }
 jetbrains-lifecycle-viewmodel = { module = "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "lifecycle" }
 jetbrains-navigation3-ui = { module = "org.jetbrains.androidx.navigation3:navigation3-ui", version.ref = "navigation3" }
+journeyapps-zxing-embedded = { module = "com.journeyapps:zxing-android-embedded", version.ref = "journeyapps" }
 jsoup = { module = "org.jsoup:jsoup", version.ref = "jsoup" }
 junit = { module = "junit:junit", version.ref = "junit" }
 koin-annotations = { module = "io.insert-koin:koin-annotations", version.ref = "koin" }

@@ -19,13 +19,15 @@ sealed class ParentModeRow {
     data class PairedDevice(val pairing: ParentPairingEntity) : ParentModeRow()
     data class DiscoveredDevice(val name: String, val host: String, val port: Int) : ParentModeRow()
     object ManualConnect : ParentModeRow()
+    object ScanQrCode : ParentModeRow()
 }
 
 /** Backs [ParentModeActivity]'s single list of section headers, paired devices, and discovered devices. */
 class ParentModeDeviceAdapter(
     private val onPairedDeviceClick: (ParentPairingEntity) -> Unit,
     private val onDiscoveredDeviceClick: (ParentModeRow.DiscoveredDevice) -> Unit,
-    private val onManualConnectClick: () -> Unit
+    private val onManualConnectClick: () -> Unit,
+    private val onScanQrCodeClick: () -> Unit
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
     private var rows: List<ParentModeRow> = emptyList()
@@ -58,6 +60,7 @@ class ParentModeDeviceAdapter(
             is ParentModeRow.PairedDevice -> (holder as RowViewHolder).bindPairedDevice(row.pairing)
             is ParentModeRow.DiscoveredDevice -> (holder as RowViewHolder).bindDiscoveredDevice(row)
             ParentModeRow.ManualConnect -> (holder as RowViewHolder).bindManualConnect()
+            ParentModeRow.ScanQrCode -> (holder as RowViewHolder).bindScanQrCode()
         }
     }
 
@@ -92,6 +95,12 @@ class ParentModeDeviceAdapter(
             binding.parentModeRowTitle.setText(R.string.parent_mode_connect_manually)
             binding.parentModeRowSubtitle.visibility = View.GONE
             binding.root.setOnClickListener { onManualConnectClick() }
+        }
+
+        fun bindScanQrCode() {
+            binding.parentModeRowTitle.setText(R.string.parent_mode_scan_qr_code)
+            binding.parentModeRowSubtitle.visibility = View.GONE
+            binding.root.setOnClickListener { onScanQrCodeClick() }
         }
     }
 

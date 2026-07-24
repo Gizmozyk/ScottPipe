@@ -278,6 +278,10 @@ dependencies {
     // Embedded HTTP server (Kid Mode local approval)
     implementation(libs.nanohttpd)
 
+    // QR code pairing (Kid Mode) -- no Play Services dependency, unlike ML Kit
+    implementation(libs.google.zxing.core)
+    implementation(libs.journeyapps.zxing.embedded)
+
     // Media player
     implementation(libs.google.exoplayer.core)
     implementation(libs.google.exoplayer.dash)

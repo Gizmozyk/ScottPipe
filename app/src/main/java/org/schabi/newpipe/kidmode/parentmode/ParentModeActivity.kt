@@ -5,6 +5,7 @@
 package org.schabi.newpipe.kidmode.parentmode
 
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.text.InputType
@@ -14,6 +15,8 @@ import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
 import io.reactivex.rxjava3.android.schedulers.AndroidSchedulers
 import io.reactivex.rxjava3.core.Completable
 import io.reactivex.rxjava3.disposables.CompositeDisposable
@@ -22,6 +25,7 @@ import org.schabi.newpipe.R
 import org.schabi.newpipe.databinding.ActivityParentModeBinding
 import org.schabi.newpipe.databinding.DialogEditTextBinding
 import org.schabi.newpipe.databinding.DialogParentModeManualConnectBinding
+import org.schabi.newpipe.kidmode.KidModePairingQrCode
 import org.schabi.newpipe.kidmode.ParentPairingManager
 import org.schabi.newpipe.kidmode.client.KidModeApiClient
 import org.schabi.newpipe.kidmode.client.KidModeNsdDiscoverer
@@ -46,6 +50,19 @@ class ParentModeActivity : AppCompatActivity() {
     private var pairedDevices: List<ParentPairingEntity> = emptyList()
     private val discoveredDevices = linkedMapOf<String, ParentModeRow.DiscoveredDevice>()
 
+    // zxing-android-embedded's scan Activity requests the CAMERA runtime permission itself and
+    // surfaces a denial as a null `contents`, same as a user-cancelled scan -- no separate
+    // pre-flight permission request is needed here.
+    private val qrScanLauncher = registerForActivityResult(ScanContract()) { result ->
+        val contents = result.contents ?: return@registerForActivityResult
+        val payload = KidModePairingQrCode.decode(contents)
+        if (payload == null) {
+            Toast.makeText(this, R.string.parent_mode_qr_invalid, Toast.LENGTH_SHORT).show()
+        } else {
+            pair(payload.host, payload.port, payload.host, payload.code)
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         ThemeHelper.setTheme(this)
         super.onCreate(savedInstanceState)
@@ -61,7 +78,8 @@ class ParentModeActivity : AppCompatActivity() {
         adapter = ParentModeDeviceAdapter(
             onPairedDeviceClick = ::openRequests,
             onDiscoveredDeviceClick = ::showPairDialog,
-            onManualConnectClick = ::showManualConnectDialog
+            onManualConnectClick = ::showManualConnectDialog,
+            onScanQrCodeClick = ::startQrScan
         )
         binding.parentModeList.layoutManager = LinearLayoutManager(this)
         binding.parentModeList.adapter = adapter
@@ -119,6 +137,11 @@ class ParentModeActivity : AppCompatActivity() {
         }
         rows += ParentModeRow.Header(R.string.parent_mode_discovered_devices_header)
         rows += ParentModeRow.ManualConnect
+        // Camera-less devices (Android TV, some tablets) never see this row -- manual connect
+        // stays unconditional as their only option, same as it always has been.
+        if (packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY)) {
+            rows += ParentModeRow.ScanQrCode
+        }
         if (discoveredDevices.isEmpty()) {
             rows += ParentModeRow.EmptyHint(R.string.parent_mode_no_discovered_devices)
         } else {
@@ -172,6 +195,15 @@ class ParentModeActivity : AppCompatActivity() {
                 }
             }
             .show()
+    }
+
+    private fun startQrScan() {
+        qrScanLauncher.launch(
+            ScanOptions()
+                .setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+                .setPrompt(getString(R.string.parent_mode_scan_qr_prompt))
+                .setBeepEnabled(false)
+        )
     }
 
     private fun pair(host: String, port: Int, kidDeviceName: String, code: String) {

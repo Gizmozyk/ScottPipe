@@ -266,3 +266,73 @@ in search/related — no badge target exists there yet), and
 `list_stream_mini_item.xml`/`list_stream_grid_item.xml`/`list_stream_card_item.xml`
 and their holders (only `list_stream_item.xml`/`StreamInfoItemHolder` got
 the badge).
+
+## Built: QR-code pairing
+
+Pairing a parent device meant either NSD/mDNS auto-discovery (never
+verified end-to-end on real hardware, and commonly broken outright by
+AP/client isolation on consumer routers and mesh Wi-Fi) or typing a
+host, port, and 6-digit code by hand. Inspired by the "point and go"
+feel of Android's Quick Share, the kid device now also shows a QR code
+in its pairing dialog that a parent can scan instead of typing anything.
+Considered and rejected: actual BLE-based discovery (à la Quick Share)
+— hand-rolling a GATT advertiser/scanner is a large lift (per-Android-
+version permission handling, battery cost), and the "easy" way to get
+that robustness, Google's Nearby Connections API, depends on Play
+Services, which conflicts with this project's no-cloud/no-Google-
+dependency stance (see the ADR). A QR code gets most of the benefit for
+near-zero marginal cost: it's the *existing* manual-connect flow, just
+fed by a camera instead of a keyboard.
+
+**ZXing, not ML Kit.** `com.google.zxing:core` (pure Java encode/decode,
+zero Android dependency) + `com.journeyapps:zxing-android-embedded` (the
+scanning `Activity`, wired via the modern `ActivityResultContracts`-based
+`ScanContract`, which also ships a `BarcodeEncoder` for rendering a
+`Bitmap`). ML Kit barcode scanning depends on Play Services
+infrastructure even in its "unbundled" form — a real conflict with the
+same no-cloud stance.
+
+**What round-trips through the QR code** is deliberately minimal: just
+`host`, `port`, and the existing one-time 6-digit pairing code
+(`KidModePairingQrPayload`, `kotlinx.serialization`, matching
+`KidModeApiClient`'s existing DTO style). `deviceId`/`sharedSecret` are
+never part of it — those still only ever come back from the `/pair` HTTP
+response, unchanged. A `type` discriminator field (`"scottpipe-kid-mode-
+pairing"`) guards against decoding an unrelated QR code that happens to
+parse as JSON with the same shape — `KidModePairingQrCode.decode`
+returns `null` (not a throw) for anything that doesn't match, surfaced
+on the parent side as a plain "that doesn't look like a pairing code"
+toast rather than a crash or a confusing pairing attempt.
+
+**One shared completion path.** Both pairing routes (NSD-discovered
+click, manual-connect) already funneled into one private
+`ParentModeActivity.pair(host, port, kidDeviceName, code)` method — the
+QR scan callback just decodes the three values and calls that same
+method (`pair(payload.host, payload.port, payload.host, payload.code)`,
+using host as the fallback display name, exactly like manual-connect
+already does). No changes needed to `KidModeApiClient.pair` or
+`ParentPairingManager.save`.
+
+**Finding the kid device's own LAN IP** (`KidModeLanAddress`) uses
+`ConnectivityManager.activeNetwork`/`LinkProperties`, not
+`WifiManager.connectionInfo` — the latter needs `ACCESS_WIFI_STATE`, a
+permission this app has deliberately avoided adding (see the NSD
+advertiser/discoverer classes' own doc comments), and only reports an
+address when associated to Wi-Fi in station mode.
+`ApprovalHttpServer` binds `0.0.0.0` (any interface), so
+`ConnectivityManager` — which reflects whatever the active network
+actually is — is the better match for "what address can a parent
+actually reach this server on." If no address can be determined (Wi-Fi
+off, cellular only), the QR image and its hint are simply hidden — the
+numeric code stays either way, so pairing never regresses to
+worse-than-before.
+
+**The "Scan QR code" row only appears on devices with a camera**
+(`packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY)`) —
+Android TV boxes and camera-less tablets simply never see it;
+"Connect manually" stays unconditional as their only option, same as
+before this feature existed. No explicit pre-flight `CAMERA` permission
+request is needed in `ParentModeActivity`:
+`zxing-android-embedded`'s scan `Activity` requests it itself and
+surfaces a denial as a `null` scan result, which the existing
+"cancelled or nothing scanned" early-return already handles identically.

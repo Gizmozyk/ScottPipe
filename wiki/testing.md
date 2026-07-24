@@ -412,3 +412,36 @@ row is the refresh target, not a separate small icon — check
 `resource-id="...refresh_root_view"` bounds if unsure) and confirm via
 `adb logcat -s FeedLoadService` that a real fetch ran before drawing
 conclusions from an empty feed.
+
+## Kid Mode QR-code pairing verification
+
+`KidModePairingQrCodeTest` (plain JVM, encode/decode round-trip + `null`
+on non-JSON/wrong-shape/mismatched-`type` input) and
+`KidModeLanAddressTest`/`KidModeQrCodeGeneratorTest` (instrumented) all
+pass as of 2026-07-24. `./gradlew :app:assembleDebug` also confirmed
+`zxing-android-embedded`'s SDK-24-ish expectations are satisfied at this
+app's minSdk 23 by the existing core-library desugaring — no version
+pinning fallback was needed.
+
+**Not yet manually verified — needs a real camera, which this
+environment doesn't have.** Two emulator instances have no camera
+passthrough between them the way `10.0.2.2` bridges networking for HTTP
+(unlike every other Kid Mode phase so far, this one can't be smoke-tested
+purely on this machine). Still to do, on real hardware:
+
+- Kid device: "Pair a parent device" shows the QR image (not just the
+  numeric code) when Wi-Fi is connected.
+- Parent device: "Scan QR code" row appears (camera-having device),
+  requests the `CAMERA` permission on first use, and a successful scan
+  pairs with zero typing.
+- Denying the camera permission degrades gracefully (a toast/cancelled
+  scan, not a crash), and "Connect manually" still works from the same
+  screen.
+- A camera-less device/AVD never shows the "Scan QR code" row at all.
+- Scanning an unrelated QR code (anything not produced by this app)
+  shows the "That doesn't look like a ScottPipe pairing code" toast
+  rather than crashing or attempting a pairing.
+- This is also the natural time to finally test genuine NSD
+  cross-device discovery (still outstanding from Phase D, see above) if
+  a second real device is available in the same session, since both
+  gaps need real hardware anyway.
