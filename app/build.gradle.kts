@@ -64,6 +64,9 @@ configure<ApplicationExtension> {
             if (normalizedWorkingBranch.isEmpty() || workingBranch in defaultBranches) {
                 applicationIdSuffix = ".debug"
                 resValue("string", "app_name", "NewPipe Debug")
+            } else if (workingBranch == "ScottDev") {
+                applicationIdSuffix = ".debug.$normalizedWorkingBranch"
+                resValue("string", "app_name", "ScottPipe")
             } else {
                 applicationIdSuffix = ".debug.$normalizedWorkingBranch"
                 resValue("string", "app_name", "NewPipe $workingBranch")
@@ -92,6 +95,9 @@ configure<ApplicationExtension> {
             if (normalizedWorkingBranch.isEmpty() || workingBranch in defaultBranches) {
                 applicationIdSuffix = ".continuous"
                 resValue("string", "app_name", "NewPipe Continuous")
+            } else if (workingBranch == "ScottDev") {
+                applicationIdSuffix = ".continuous.$normalizedWorkingBranch"
+                resValue("string", "app_name", "ScottPipe")
             } else {
                 applicationIdSuffix = ".continuous.$normalizedWorkingBranch"
                 resValue("string", "app_name", "NewPipe $workingBranch")
