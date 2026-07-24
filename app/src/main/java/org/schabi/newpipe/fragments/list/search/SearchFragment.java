@@ -78,6 +78,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Queue;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
@@ -154,6 +155,10 @@ public class SearchFragment extends BaseListFragment<SearchInfo, ListExtractor.I
     private Disposable searchDisposable;
     private Disposable suggestionDisposable;
     private final CompositeDisposable disposables = new CompositeDisposable();
+
+    /** Set inside the IO-thread filter step, read shortly after on the main thread
+     * in handleResult/handleNextItems. */
+    private Set<String> kidModePendingChannelKeys = Collections.emptySet();
 
     private SuggestionListAdapter suggestionListAdapter;
     private HistoryRecordManager historyRecordManager;
@@ -893,8 +898,11 @@ public class SearchFragment extends BaseListFragment<SearchInfo, ListExtractor.I
                 sortFilter)
                 .subscribeOn(Schedulers.io())
                 .map(result -> {
-                    result.setRelatedItems(KidModeContentFilter.INSTANCE
-                            .filterItems(requireContext(), result.getRelatedItems()));
+                    final KidModeContentFilter.FilterResult<InfoItem> filtered =
+                            KidModeContentFilter.INSTANCE.filterItems(
+                                    requireContext(), result.getRelatedItems());
+                    result.setRelatedItems(filtered.getItems());
+                    kidModePendingChannelKeys = filtered.getPendingChannelKeys();
                     return result;
                 })
                 .observeOn(AndroidSchedulers.mainThread())
@@ -920,11 +928,13 @@ public class SearchFragment extends BaseListFragment<SearchInfo, ListExtractor.I
                 sortFilter,
                 nextPage)
                 .subscribeOn(Schedulers.io())
-                .map(result -> new ListExtractor.InfoItemsPage<>(
-                        KidModeContentFilter.INSTANCE.filterItems(
-                                requireContext(), result.getItems()),
-                        result.getNextPage(),
-                        result.getErrors()))
+                .map(result -> {
+                    final var filtered = KidModeContentFilter.INSTANCE.filterItems(
+                            requireContext(), result.getItems());
+                    kidModePendingChannelKeys = filtered.getPendingChannelKeys();
+                    return new ListExtractor.InfoItemsPage<>(
+                            filtered.getItems(), result.getNextPage(), result.getErrors());
+                })
                 .observeOn(AndroidSchedulers.mainThread())
                 .doOnEvent((nextItemsResult, throwable) -> isLoading.set(false))
                 .subscribe(this::handleNextItems, this::onItemError);
@@ -1073,6 +1083,7 @@ public class SearchFragment extends BaseListFragment<SearchInfo, ListExtractor.I
 
         if (infoListAdapter.getItemsList().isEmpty()) {
             if (!result.getRelatedItems().isEmpty()) {
+                infoListAdapter.setKidModePendingChannelKeys(kidModePendingChannelKeys);
                 infoListAdapter.addInfoItemList(result.getRelatedItems());
             } else {
                 infoListAdapter.clearStreamItemList();
@@ -1118,6 +1129,7 @@ public class SearchFragment extends BaseListFragment<SearchInfo, ListExtractor.I
     @Override
     public void handleNextItems(final ListExtractor.InfoItemsPage<?> result) {
         showListFooter(false);
+        infoListAdapter.addKidModePendingChannelKeys(kidModePendingChannelKeys);
         infoListAdapter.addInfoItemList(result.getItems());
 
         if (!result.getErrors().isEmpty()) {

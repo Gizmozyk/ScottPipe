@@ -25,8 +25,10 @@ import org.schabi.newpipe.util.Constants;
 import org.schabi.newpipe.views.NewPipeRecyclerView;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Queue;
+import java.util.Set;
 
 import io.reactivex.rxjava3.android.schedulers.AndroidSchedulers;
 import io.reactivex.rxjava3.core.Single;
@@ -47,6 +49,10 @@ public abstract class BaseListInfoFragment<I extends InfoItem, L extends ListInf
     @Nullable
     protected Page currentNextPage;
     protected Disposable currentWorker;
+
+    /** Set inside the IO-thread filter step, read shortly after on the main thread
+     * in handleResult/handleNextItems. */
+    private Set<String> kidModePendingChannelKeys = Collections.emptySet();
 
     protected BaseListInfoFragment(final UserAction errorUserAction) {
         this.errorUserAction = errorUserAction;
@@ -147,8 +153,11 @@ public abstract class BaseListInfoFragment<I extends InfoItem, L extends ListInf
         currentWorker = loadResult(forceLoad)
                 .subscribeOn(Schedulers.io())
                 .map((@NonNull final L result) -> {
-                    result.setRelatedItems(KidModeContentFilter.INSTANCE
-                            .filterItems(requireContext(), result.getRelatedItems()));
+                    final KidModeContentFilter.FilterResult<I> filtered =
+                            KidModeContentFilter.INSTANCE.filterItems(
+                                    requireContext(), result.getRelatedItems());
+                    result.setRelatedItems(filtered.getItems());
+                    kidModePendingChannelKeys = filtered.getPendingChannelKeys();
                     return result;
                 })
                 .observeOn(AndroidSchedulers.mainThread())
@@ -183,12 +192,14 @@ public abstract class BaseListInfoFragment<I extends InfoItem, L extends ListInf
 
         currentWorker = loadMoreItemsLogic()
                 .subscribeOn(Schedulers.io())
-                .map((@NonNull final ListExtractor.InfoItemsPage<I> result) ->
-                        new ListExtractor.InfoItemsPage<>(
-                                KidModeContentFilter.INSTANCE.filterItems(
-                                        requireContext(), result.getItems()),
-                                result.getNextPage(),
-                                result.getErrors()))
+                .map((@NonNull final ListExtractor.InfoItemsPage<I> result) -> {
+                    final KidModeContentFilter.FilterResult<I> filtered =
+                            KidModeContentFilter.INSTANCE.filterItems(
+                                    requireContext(), result.getItems());
+                    kidModePendingChannelKeys = filtered.getPendingChannelKeys();
+                    return new ListExtractor.InfoItemsPage<>(
+                            filtered.getItems(), result.getNextPage(), result.getErrors());
+                })
                 .observeOn(AndroidSchedulers.mainThread())
                 .doFinally(this::allowDownwardFocusScroll)
                 .subscribe(infoItemsPage -> {
@@ -216,6 +227,7 @@ public abstract class BaseListInfoFragment<I extends InfoItem, L extends ListInf
         super.handleNextItems(result);
 
         currentNextPage = result.getNextPage();
+        infoListAdapter.addKidModePendingChannelKeys(kidModePendingChannelKeys);
         infoListAdapter.addInfoItemList(result.getItems());
 
         showListFooter(hasMoreItems());
@@ -244,6 +256,7 @@ public abstract class BaseListInfoFragment<I extends InfoItem, L extends ListInf
 
         if (infoListAdapter.getItemsList().isEmpty()) {
             if (!result.getRelatedItems().isEmpty()) {
+                infoListAdapter.setKidModePendingChannelKeys(kidModePendingChannelKeys);
                 infoListAdapter.addInfoItemList(result.getRelatedItems());
                 showListFooter(hasMoreItems());
             } else if (hasMoreItems()) {

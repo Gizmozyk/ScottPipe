@@ -36,7 +36,9 @@ import org.schabi.newpipe.util.FallbackViewHolder;
 import org.schabi.newpipe.util.OnClickGesture;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.function.Supplier;
 
 /*
@@ -113,6 +115,20 @@ public class InfoListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolde
 
     public void setOnCommentsSelectedListener(final OnClickGesture<CommentsInfoItem> listener) {
         infoItemBuilder.setOnCommentsSelectedListener(listener);
+    }
+
+    // Replaces the pending-approval badge keys -- use on a fresh load so stale badges don't
+    // leak forward.
+    public void setKidModePendingChannelKeys(final Set<String> keys) {
+        infoItemBuilder.setKidModePendingChannelKeys(keys);
+    }
+
+    // Unions new pending-approval badge keys in -- use on "load more" so earlier pages keep
+    // their badges.
+    public void addKidModePendingChannelKeys(final Set<String> keys) {
+        final Set<String> merged = new HashSet<>(infoItemBuilder.getKidModePendingChannelKeys());
+        merged.addAll(keys);
+        infoItemBuilder.setKidModePendingChannelKeys(merged);
     }
 
     public void setUseMiniVariant(final boolean useMiniVariant) {

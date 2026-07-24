@@ -176,6 +176,7 @@
     <string name="kid_mode_denied_toast">Request denied</string>
     <string name="kid_mode_subscribed_toast">Subscribed to %1$s</string>
     <string name="kid_mode_channel_blocked_toast">This channel is blocked</string>
+    <string name="kid_mode_pending_approval_badge_description">Needs a parent\'s approval to watch</string>
     <string name="kid_mode_pair_device_title">Pair a parent device</string>
     <string name="kid_mode_pair_device_summary">Show a code a parent device can use to pair over the same Wi-Fi</string>
     <string name="kid_mode_pairing_code_title">Pairing code</string>

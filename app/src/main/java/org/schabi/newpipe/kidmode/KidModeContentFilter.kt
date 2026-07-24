@@ -26,22 +26,53 @@ import org.schabi.newpipe.kidmode.db.ChannelListStatus
  */
 object KidModeContentFilter {
 
+    /**
+     * @param items surviving (non-blocked) items, in the original order.
+     * @param pendingChannelKeys [pendingKeyOf] keys for surviving [StreamInfoItem]s whose channel
+     * has no rule yet and isn't subscribed -- i.e. would hit [KidModeGate.GateDecision.NEEDS_APPROVAL]
+     * if tapped. Used to badge those rows before the tap, not just gate them after.
+     */
+    data class FilterResult<T : InfoItem>(val items: List<T>, val pendingChannelKeys: Set<String>)
+
     private class Snapshot(
         private val blacklistedChannels: Set<Pair<Int, String>>,
+        private val whitelistedChannels: Set<Pair<Int, String>>,
+        private val subscribedChannels: Set<Pair<Int, String>>,
         private val deniedVideoUrls: Set<String>
     ) {
         fun isBlockedChannel(serviceId: Int, channelUrl: String?): Boolean = channelUrl != null && (serviceId to channelUrl) in blacklistedChannels
 
         fun isDeniedVideo(videoUrl: String): Boolean = videoUrl in deniedVideoUrls
+
+        fun isAllowedWithoutApproval(serviceId: Int, channelUrl: String): Boolean {
+            val key = serviceId to channelUrl
+            return key in whitelistedChannels || key in subscribedChannels
+        }
     }
 
+    /** `"$serviceId:$channelUrl"` -- the shared key format for [FilterResult.pendingChannelKeys]. */
+    fun pendingKeyOf(serviceId: Int, channelUrl: String): String = "$serviceId:$channelUrl"
+
     /** Filters a list of extractor [InfoItem]s (streams and/or channels) for the given fragments. */
-    fun <T : InfoItem> filterItems(context: Context, items: List<T>): List<T> {
+    fun <T : InfoItem> filterItems(context: Context, items: List<T>): FilterResult<T> {
         if (!KidModeGate(context).isEnabled()) {
-            return items
+            return FilterResult(items, emptySet())
         }
         val snapshot = loadSnapshot(context)
-        return items.filterNot { isBlocked(it, snapshot) }
+        val kept = items.filterNot { isBlocked(it, snapshot) }
+        val pending = kept.filterIsInstance<StreamInfoItem>()
+            .mapNotNull { stream ->
+                val uploaderUrl = stream.uploaderUrl
+                if (uploaderUrl.isNullOrEmpty() ||
+                    snapshot.isAllowedWithoutApproval(stream.serviceId, uploaderUrl)
+                ) {
+                    null
+                } else {
+                    pendingKeyOf(stream.serviceId, uploaderUrl)
+                }
+            }
+            .toSet()
+        return FilterResult(kept, pending)
     }
 
     /** Filters the subscriptions feed's local cache -- covers a channel blacklisted after the kid was already subscribed. */
@@ -70,11 +101,17 @@ object KidModeContentFilter {
 
     private fun loadSnapshot(context: Context): Snapshot {
         val database = NewPipeDatabase.getInstance(context)
-        val blacklisted = database.channelRuleDAO().getAllRules().blockingFirst()
-            .filter { it.status == ChannelListStatus.BLACKLISTED }
+        val rules = database.channelRuleDAO().getAllRules().blockingFirst()
+        val blacklisted = rules.filter { it.status == ChannelListStatus.BLACKLISTED }
             .map { it.serviceId to it.channelUrl }
             .toSet()
+        val whitelisted = rules.filter { it.status == ChannelListStatus.WHITELISTED }
+            .map { it.serviceId to it.channelUrl }
+            .toSet()
+        val subscribed = database.subscriptionDAO().getAll().blockingFirst()
+            .mapNotNull { entity -> entity.url?.let { entity.serviceId to it } }
+            .toSet()
         val deniedVideoUrls = database.approvalRequestDAO().getDeniedVideoUrls().blockingFirst().toSet()
-        return Snapshot(blacklisted, deniedVideoUrls)
+        return Snapshot(blacklisted, whitelisted, subscribed, deniedVideoUrls)
     }
 }

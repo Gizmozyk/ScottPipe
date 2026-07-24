@@ -11,6 +11,7 @@ import org.schabi.newpipe.NewPipeDatabase
 import org.schabi.newpipe.R
 import org.schabi.newpipe.database.stream.StreamWithState
 import org.schabi.newpipe.database.stream.model.StreamEntity
+import org.schabi.newpipe.database.subscription.SubscriptionEntity
 import org.schabi.newpipe.extractor.ServiceList
 import org.schabi.newpipe.extractor.channel.ChannelInfoItem
 import org.schabi.newpipe.extractor.comments.CommentsInfoItem
@@ -92,7 +93,7 @@ class KidModeContentFilterTest {
         setKidModeEnabled(false)
         val items = listOf(streamItem(deniedVideoUrl, blockedChannelUrl))
 
-        assertEquals(1, KidModeContentFilter.filterItems(context, items).size)
+        assertEquals(1, KidModeContentFilter.filterItems(context, items).items.size)
     }
 
     @Test
@@ -102,7 +103,7 @@ class KidModeContentFilterTest {
             streamItem(allowedVideoUrl, allowedChannelUrl)
         )
 
-        val filtered = KidModeContentFilter.filterItems(context, items)
+        val filtered = KidModeContentFilter.filterItems(context, items).items
 
         assertEquals(1, filtered.size)
         assertEquals(allowedChannelUrl, (filtered[0] as StreamInfoItem).uploaderUrl)
@@ -115,7 +116,7 @@ class KidModeContentFilterTest {
             streamItem(allowedVideoUrl, allowedChannelUrl)
         )
 
-        val filtered = KidModeContentFilter.filterItems(context, items)
+        val filtered = KidModeContentFilter.filterItems(context, items).items
 
         assertEquals(1, filtered.size)
         assertEquals(allowedVideoUrl, (filtered[0] as StreamInfoItem).url)
@@ -125,7 +126,7 @@ class KidModeContentFilterTest {
     fun dropsABlacklistedChannelItself() {
         val items = listOf(channelItem(blockedChannelUrl), channelItem(allowedChannelUrl))
 
-        val filtered = KidModeContentFilter.filterItems(context, items)
+        val filtered = KidModeContentFilter.filterItems(context, items).items
 
         assertEquals(1, filtered.size)
         assertEquals(allowedChannelUrl, (filtered[0] as ChannelInfoItem).url)
@@ -156,7 +157,7 @@ class KidModeContentFilterTest {
     fun aStreamWithNoUploaderUrlIsNeverBlockedAndDoesNotCrash() {
         val itemWithNoUploaderUrl = StreamInfoItem(serviceId, allowedVideoUrl, "a video", StreamType.VIDEO_STREAM)
 
-        val filtered = KidModeContentFilter.filterItems(context, listOf(itemWithNoUploaderUrl))
+        val filtered = KidModeContentFilter.filterItems(context, listOf(itemWithNoUploaderUrl)).items
 
         assertEquals(1, filtered.size)
     }
@@ -168,8 +169,58 @@ class KidModeContentFilterTest {
         // wiki/features/kid-mode.md's Phase E section).
         val items = listOf(CommentsInfoItem(serviceId, "https://youtube.com/comment/1", "a comment"))
 
-        val filtered = KidModeContentFilter.filterItems(context, items)
+        val filtered = KidModeContentFilter.filterItems(context, items).items
 
         assertEquals(1, filtered.size)
+    }
+
+    @Test
+    fun aNeutralChannelsStreamIsPending() {
+        val neutralChannelUrl = "https://youtube.com/channel/neutral"
+        val items = listOf(streamItem(allowedVideoUrl, neutralChannelUrl))
+
+        val pending = KidModeContentFilter.filterItems(context, items).pendingChannelKeys
+
+        assertEquals(setOf(KidModeContentFilter.pendingKeyOf(serviceId, neutralChannelUrl)), pending)
+    }
+
+    @Test
+    fun aWhitelistedChannelsStreamIsNotPending() {
+        val whitelistedChannelUrl = "https://youtube.com/channel/whitelisted"
+        NewPipeDatabase.getInstance(context).channelRuleDAO().upsertRule(
+            ChannelRuleEntity(
+                serviceId = serviceId,
+                channelUrl = whitelistedChannelUrl,
+                status = ChannelListStatus.WHITELISTED,
+                setAt = 1L
+            )
+        )
+        val items = listOf(streamItem(allowedVideoUrl, whitelistedChannelUrl))
+
+        val pending = KidModeContentFilter.filterItems(context, items).pendingChannelKeys
+
+        assertEquals(emptySet<String>(), pending)
+    }
+
+    @Test
+    fun anAlreadySubscribedChannelsStreamIsNotPending() {
+        val subscribedChannelUrl = "https://youtube.com/channel/subscribed"
+        NewPipeDatabase.getInstance(context).subscriptionDAO().upsertAll(
+            listOf(SubscriptionEntity(serviceId = serviceId, url = subscribedChannelUrl, name = "a channel"))
+        )
+        val items = listOf(streamItem(allowedVideoUrl, subscribedChannelUrl))
+
+        val pending = KidModeContentFilter.filterItems(context, items).pendingChannelKeys
+
+        assertEquals(emptySet<String>(), pending)
+    }
+
+    @Test
+    fun aBlacklistedChannelsStreamIsNotPendingSinceItsAlreadyDropped() {
+        val items = listOf(streamItem(allowedVideoUrl, blockedChannelUrl))
+
+        val pending = KidModeContentFilter.filterItems(context, items).pendingChannelKeys
+
+        assertEquals(emptySet<String>(), pending)
     }
 }

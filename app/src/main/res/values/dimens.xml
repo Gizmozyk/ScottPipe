@@ -48,6 +48,8 @@
     <dimen name="video_item_search_duration_vertical_padding">1sp</dimen>
     <dimen name="video_item_search_duration_horizontal_padding">5sp</dimen>
     <dimen name="video_item_search_duration_margin">2dp</dimen>
+    <dimen name="video_item_search_pending_badge_size">20dp</dimen>
+    <dimen name="video_item_search_pending_badge_margin">2dp</dimen>
     <dimen name="channel_item_grid_padding">12dp</dimen>
     <dimen name="comments_horizontal_padding">16dp</dimen>
     <dimen name="comments_vertical_padding">12dp</dimen>

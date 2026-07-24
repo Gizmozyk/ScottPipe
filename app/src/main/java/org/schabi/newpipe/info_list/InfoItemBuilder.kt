@@ -17,4 +17,7 @@ class InfoItemBuilder(val context: Context) {
     var onChannelSelectedListener: OnClickGesture<ChannelInfoItem>? = null
     var onPlaylistSelectedListener: OnClickGesture<PlaylistInfoItem>? = null
     var onCommentsSelectedListener: OnClickGesture<CommentsInfoItem>? = null
+
+    /** [org.schabi.newpipe.kidmode.KidModeContentFilter.pendingKeyOf] keys needing a pending-approval badge. */
+    var kidModePendingChannelKeys: Set<String> = emptySet()
 }

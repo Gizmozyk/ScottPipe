@@ -20,6 +20,21 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
+    <ImageView
+        android:id="@+id/itemPendingApprovalBadge"
+        android:layout_width="@dimen/video_item_search_pending_badge_size"
+        android:layout_height="@dimen/video_item_search_pending_badge_size"
+        android:layout_marginStart="@dimen/video_item_search_pending_badge_margin"
+        android:layout_marginBottom="@dimen/video_item_search_pending_badge_margin"
+        android:background="@drawable/kid_mode_pending_badge_background"
+        android:contentDescription="@string/kid_mode_pending_approval_badge_description"
+        android:padding="4dp"
+        android:src="@drawable/ic_kid_mode_pending_lock"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="@id/itemThumbnailView"
+        app:layout_constraintStart_toStartOf="@id/itemThumbnailView"
+        tools:visibility="visible" />
+
     <org.schabi.newpipe.views.NewPipeTextView
         android:id="@+id/itemDurationView"
         android:layout_width="wrap_content"

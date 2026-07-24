@@ -215,3 +215,54 @@ dialog: Cancel / Blacklist / Whitelist), or remove a rule (with
 confirmation, back to needing per-request approval). New authenticated
 endpoints mirror the existing approve/deny pattern: `POST /channels/rule`,
 `POST /channels/unlist`, `GET /channels`.
+
+## Built: pending-approval lock badge on thumbnails
+
+A neutral item — not whitelisted, not blacklisted, channel not yet
+subscribed — used to render identically to a fully-allowed one; the kid
+only found out it was gated when the approval dialog interrupted the tap.
+Inspired by Safe Vision's own lock-badge treatment (confirmed via real
+App Store screenshots, not just marketing copy — the video-list rows use
+a small padlock overlay on the thumbnail corner). Scoped to `StreamInfoItem`
+rows only (search, trending/kiosks, channel tabs, related videos); the
+subscriptions Feed can't ever have a pending row, since it only shows
+videos from channels the kid is *already subscribed to*, and a subscribed
+channel is always `ALLOWED` per `KidModeGate.canPlay` (unless blacklisted,
+which Phase E already filters out entirely).
+
+**`KidModeContentFilter.filterItems` now returns a `FilterResult`**
+(`items`, `pendingChannelKeys`) instead of a bare list. The pending set is
+computed from the same snapshot query already used for blacklist/denial
+checks, extended with a bulk `subscriptionDAO().getAll()` read (one more
+query, same "one query per list, not per item" principle as the rest of
+the filter) — a stream's channel is pending when it's in neither the
+whitelisted nor the subscribed set.
+
+**Getting the pending set to the ViewHolder without a global cache.**
+`StreamInfoItemHolder.updateFromItem` runs on the main thread during
+RecyclerView bind and can't query Room directly. A tempting shortcut — a
+single mutable cache on `KidModeContentFilter` written by whichever
+fragment filtered last — was rejected: `ChannelFragment`'s tabs run on a
+`ViewPager2` that preloads adjacent tabs, so two `BaseListInfoFragment`
+instances can genuinely filter concurrently, and a "last write wins"
+cache would race between tabs and show the wrong tab's badges. Instead,
+the pending set rides on `InfoItemBuilder` — which `InfoListAdapter`
+already constructs one-per-adapter-per-fragment-instance, so it's already
+correctly scoped per screen/tab with no new lifecycle object needed.
+`InfoListAdapter` gained two delegate methods: `setKidModePendingChannelKeys`
+(replaces — used on a fresh load, so stale badges from a previous load
+don't leak forward) and `addKidModePendingChannelKeys` (unions — used on
+"load more" pagination, so scrolling back up to an earlier page doesn't
+lose that page's badges when a later page's set would otherwise have
+replaced it).
+
+**The badge is purely advisory.** `KidModeGate.canPlay` still re-checks
+fresh at tap time regardless of what the badge showed — a stale or
+missing badge can never let something slip through; at worst it's a UX
+inconsistency (a pending item without its badge), never a safety gap.
+
+Deliberately out of scope for now: `ChannelInfoItem` rows (channel cards
+in search/related — no badge target exists there yet), and
+`list_stream_mini_item.xml`/`list_stream_grid_item.xml`/`list_stream_card_item.xml`
+and their holders (only `list_stream_item.xml`/`StreamInfoItemHolder` got
+the badge).

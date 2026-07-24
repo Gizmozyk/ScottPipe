@@ -1,7 +1,9 @@
 package org.schabi.newpipe.info_list.holder;
 
 import android.text.TextUtils;
+import android.view.View;
 import android.view.ViewGroup;
+import android.widget.ImageView;
 import android.widget.TextView;
 
 import org.schabi.newpipe.R;
@@ -9,6 +11,7 @@ import org.schabi.newpipe.extractor.InfoItem;
 import org.schabi.newpipe.extractor.stream.StreamInfoItem;
 import org.schabi.newpipe.extractor.stream.StreamType;
 import org.schabi.newpipe.info_list.InfoItemBuilder;
+import org.schabi.newpipe.kidmode.KidModeContentFilter;
 import org.schabi.newpipe.local.history.HistoryRecordManager;
 import org.schabi.newpipe.util.Localization;
 
@@ -38,6 +41,7 @@ import org.schabi.newpipe.util.Localization;
 
 public class StreamInfoItemHolder extends StreamMiniInfoItemHolder {
     public final TextView itemAdditionalDetails;
+    private final ImageView itemPendingApprovalBadge;
 
     public StreamInfoItemHolder(final InfoItemBuilder infoItemBuilder, final ViewGroup parent) {
         this(infoItemBuilder, R.layout.list_stream_item, parent);
@@ -47,6 +51,7 @@ public class StreamInfoItemHolder extends StreamMiniInfoItemHolder {
                                 final ViewGroup parent) {
         super(infoItemBuilder, layoutId, parent);
         itemAdditionalDetails = itemView.findViewById(R.id.itemAdditionalDetails);
+        itemPendingApprovalBadge = itemView.findViewById(R.id.itemPendingApprovalBadge);
     }
 
     @Override
@@ -60,6 +65,12 @@ public class StreamInfoItemHolder extends StreamMiniInfoItemHolder {
         final StreamInfoItem item = (StreamInfoItem) infoItem;
 
         itemAdditionalDetails.setText(getStreamInfoDetailLine(item));
+
+        final String uploaderUrl = item.getUploaderUrl();
+        final String pendingKey = uploaderUrl == null ? null
+                : KidModeContentFilter.INSTANCE.pendingKeyOf(item.getServiceId(), uploaderUrl);
+        final boolean pending = itemBuilder.getKidModePendingChannelKeys().contains(pendingKey);
+        itemPendingApprovalBadge.setVisibility(pending ? View.VISIBLE : View.GONE);
     }
 
     private String getStreamInfoDetailLine(final StreamInfoItem infoItem) {
