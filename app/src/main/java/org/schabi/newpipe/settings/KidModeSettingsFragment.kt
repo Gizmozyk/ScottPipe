@@ -4,6 +4,7 @@
 
 package org.schabi.newpipe.settings
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.appcompat.app.AlertDialog
 import androidx.preference.Preference
@@ -11,6 +12,7 @@ import androidx.preference.SwitchPreferenceCompat
 import org.schabi.newpipe.R
 import org.schabi.newpipe.kidmode.KidModePinManager
 import org.schabi.newpipe.kidmode.KidModePinPrompt
+import org.schabi.newpipe.kidmode.parentmode.ParentModeActivity
 import org.schabi.newpipe.kidmode.server.KidModeServerService
 
 /**
@@ -20,11 +22,13 @@ import org.schabi.newpipe.kidmode.server.KidModeServerService
 class KidModeSettingsFragment : BasePreferenceFragment() {
     private lateinit var enabledPreference: SwitchPreferenceCompat
     private lateinit var pairDeviceKey: String
+    private lateinit var parentModeKey: String
 
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         addPreferencesFromResourceRegistry()
         enabledPreference = requirePreference(R.string.kid_mode_enabled_key)
         pairDeviceKey = getString(R.string.kid_mode_pair_device_key)
+        parentModeKey = getString(R.string.parent_mode_key)
 
         val pinManager = KidModePinManager(requireContext())
         if (pinManager.isPinSet()) {
@@ -52,6 +56,12 @@ class KidModeSettingsFragment : BasePreferenceFragment() {
         if (preference.key == pairDeviceKey) {
             // Pairing grants a new trusted device -- sensitive, same PIN gate as disabling.
             KidModePinPrompt.show(requireContext(), layoutInflater) { startPairing() }
+            return true
+        }
+        if (preference.key == parentModeKey) {
+            // No PIN gate here -- this is the parent's own action on their own phone, not a
+            // kid-safety chokepoint like the entries above.
+            startActivity(Intent(requireContext(), ParentModeActivity::class.java))
             return true
         }
         return super.onPreferenceTreeClick(preference)

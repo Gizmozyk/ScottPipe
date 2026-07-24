@@ -143,6 +143,16 @@
             android:foregroundServiceType="dataSync" />
 
         <activity
+            android:name=".kidmode.parentmode.ParentModeActivity"
+            android:exported="false"
+            android:label="@string/parent_mode_title" />
+
+        <activity
+            android:name=".kidmode.parentmode.ParentModeRequestsActivity"
+            android:exported="false"
+            android:label="@string/parent_mode_requests_title" />
+
+        <activity
             android:name=".util.FilePickerActivityHelper"
             android:exported="true"
             android:label="@string/app_name"

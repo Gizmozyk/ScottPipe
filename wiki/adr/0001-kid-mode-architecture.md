@@ -1,7 +1,7 @@
 # 0001: Kid mode architecture
 
-Status: accepted (Phases A, B, and C implemented; D not yet built)
-Date: 2026-07-23, updated 2026-07-23 (Phases B and C)
+Status: accepted (Phases A, B, C, and D implemented)
+Date: 2026-07-23, updated 2026-07-23 (Phases B, C, and D)
 
 ## Context
 
@@ -100,17 +100,64 @@ duplicates `KidModePinManager`'s AES/GCM Keystore-wrapping technique
 (under its own key alias) rather than sharing code, since the two have
 different one-way-vs-reversible requirements.
 
+**Phase D's parent-side data model (`ParentPairingEntity`) is a deliberate
+mirror of `PairedDeviceEntity`, not a shared table.** Same
+Keystore-AES-wrapping technique for the secret (again duplicated under
+its own key alias, following the same precedent as above), but different
+lifecycle: the kid device soft-revokes (`revoked` flag) to keep an audit
+trail of who was ever trusted, while the parent side has no such need and
+just hard-deletes a pairing on unpair. `ParentPairingEntity` also carries
+fields the kid side never needs (`host`/`port`) since the kid device is
+always the server, never the one initiating a connection.
+
+**`KidModeApiClient` (Phase D's HTTP client) reuses `KidModeHmac`
+directly, with zero duplication.** Unlike the Keystore-wrapping code
+(duplicated each time because Android Keystore key aliases are inherently
+per-owner), `KidModeHmac` is pure `javax.crypto` with no Android
+dependency, so both sides of the protocol share the exact same
+sign/verify implementation instead of maintaining two copies that could
+drift out of sync.
+
+**"Connect manually" (host/port/code entry) is a permanent feature, not a
+stopgap for Phase D's own testing.** mDNS/NSD is commonly blocked by
+AP/client isolation on real consumer routers and mesh Wi-Fi systems
+(guest networks in particular), so a family relying solely on discovery
+could find Parent Mode simply doesn't work on their actual network. It
+also happens to be what made Phase D's protocol fully testable in this
+dev environment (two emulator instances can't discover each other over
+NSD, but can reach each other via `adb forward` + the `10.0.2.2`
+host-loopback alias with manual entry) — a useful side effect, not the
+reason it was built.
+
+**Network security config widened from loopback-only to app-wide
+cleartext.** Phase B/C's `network_security_config.xml` allowlisted only
+`127.0.0.1`/`localhost` for cleartext HTTP, which sufficed while all Kid
+Mode traffic was local-device-only (`adb forward`-based testing). Phase D
+needs the *parent* device to reach the kid device's real LAN IP, which is
+DHCP-assigned and therefore has no fixed hostname to list — Android's
+network-security-config `<domain>` matching only supports literal
+hostnames, not IP ranges, so a scoped allowlist entry per possible IP
+isn't feasible. The config now permits cleartext app-wide
+(`<base-config cleartextTrafficPermitted="true">`). This doesn't weaken
+anything else: nothing outside Kid Mode ever uses an `http://` URL, so no
+other traffic in the app is affected by also permitting it — this only
+stops the OS from pre-emptively blocking Kid Mode's inherently plaintext
+local protocol, which has no cert infrastructure by design (see "Same-Wi-Fi
+only, no cloud/push backend" above).
+
 ## Consequences
 
-- Remote approval still isn't possible from a real second phone — Phase C
-  built the kid-side pairing/auth protocol and NSD advertising, but there's
-  no parent-facing pairing or approval UI yet (Phase D). Verified so far by
-  standing in for a second device with `adb forward` + `curl`/`openssl`,
-  same as Phase B.
-- Cross-device NSD discovery specifically is unverified: the emulator used
-  for development doesn't carry multicast traffic to the host or between
-  instances, so only "the registration call doesn't throw" has actually
-  been confirmed. Needs real-hardware testing once Phase D exists.
+- Remote approval now works from a genuinely separate device (Phase D's
+  Parent Mode), verified end-to-end across two emulator instances using
+  the "Connect manually" path (see `wiki/testing.md`) — pairing, viewing
+  pending requests, and approve/deny all confirmed to reuse the exact same
+  kid-side code paths Phases A-C already proved.
+- Cross-device NSD *discovery* specifically is still unverified: the
+  emulator used for development doesn't carry multicast traffic between
+  instances, so only "the registration/discovery calls don't throw" has
+  actually been confirmed on both sides of the protocol. Needs
+  real-hardware testing (installing on the user's own phone) to fully
+  validate the original "remote approval from my own phone" goal.
   See `wiki/testing.md`.
 - Because `ApprovalRequestEntity` status changes drive the UI reactively
   (a Room `Flowable`), later phases only need to make something else write

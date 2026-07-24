@@ -144,6 +144,13 @@ class DatabaseMigrationTest {
             Migrations.MIGRATION_10_11
         )
 
+        testHelper.runMigrationsAndValidate(
+            AppDatabase.DATABASE_NAME,
+            Migrations.DB_VER_12,
+            true,
+            Migrations.MIGRATION_11_12
+        )
+
         val migratedDatabaseV3 = getMigratedDatabase()
         val listFromDB = migratedDatabaseV3.streamDAO().getAll().blockingFirst()
 
@@ -254,6 +261,13 @@ class DatabaseMigrationTest {
             Migrations.MIGRATION_10_11
         )
 
+        testHelper.runMigrationsAndValidate(
+            AppDatabase.DATABASE_NAME,
+            Migrations.DB_VER_12,
+            true,
+            Migrations.MIGRATION_11_12
+        )
+
         val migratedDatabaseV8 = getMigratedDatabase()
         val listFromDB = migratedDatabaseV8.searchHistoryDAO().getAll().blockingFirst()
 
@@ -340,6 +354,13 @@ class DatabaseMigrationTest {
             Migrations.MIGRATION_10_11
         )
 
+        testHelper.runMigrationsAndValidate(
+            AppDatabase.DATABASE_NAME,
+            Migrations.DB_VER_12,
+            true,
+            Migrations.MIGRATION_11_12
+        )
+
         val migratedDatabaseV9 = getMigratedDatabase()
         var localListFromDB = migratedDatabaseV9.playlistDAO().getAll().blockingFirst()
         var remoteListFromDB = migratedDatabaseV9.playlistRemoteDAO().getAll().blockingFirst()
@@ -397,6 +418,13 @@ class DatabaseMigrationTest {
             Migrations.DB_VER_11,
             true,
             Migrations.MIGRATION_10_11
+        )
+
+        testHelper.runMigrationsAndValidate(
+            AppDatabase.DATABASE_NAME,
+            Migrations.DB_VER_12,
+            true,
+            Migrations.MIGRATION_11_12
         )
 
         val migratedDatabaseV10 = getMigratedDatabase()

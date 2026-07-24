@@ -23,4 +23,11 @@
         android:title="@string/kid_mode_paired_devices_title"
         app:iconSpaceReserved="false" />
 
+    <Preference
+        android:key="@string/parent_mode_key"
+        android:summary="@string/parent_mode_summary"
+        android:title="@string/parent_mode_title"
+        app:singleLineTitle="false"
+        app:iconSpaceReserved="false" />
+
 </PreferenceScreen>

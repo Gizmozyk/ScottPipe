@@ -2,12 +2,18 @@
 <!--
   Apps targeting API 28+ block cleartext (non-HTTPS) traffic by default, with no automatic
   exception for loopback addresses. Kid Mode's embedded local server (see
-  org.schabi.newpipe.kidmode.server.ApprovalHttpServer) is plain HTTP and loopback-only, so it
-  needs this explicit exception; everything else in the app still talks HTTPS as normal.
+  org.schabi.newpipe.kidmode.server.ApprovalHttpServer) is plain HTTP, and Phase D's
+  org.schabi.newpipe.kidmode.client.KidModeApiClient talks to it from a paired parent device over
+  the LAN; both directions need this exception.
+
+  This is app-wide (a base-config, not scoped to specific domains) because Android's
+  network-security-config domain matching only supports literal hostnames, not IP ranges, and
+  the kid device's LAN IP is whatever its router's DHCP assigns; there's no fixed hostname to
+  list. This doesn't weaken anything else in the app: nothing outside Kid Mode ever uses an
+  http:// URL, so this only stops the OS from pre-emptively blocking Kid Mode's inherently
+  plaintext local protocol (there's no cert infrastructure for an ad-hoc same-Wi-Fi pairing
+  feature); it doesn't downgrade any real HTTPS traffic.
 -->
 <network-security-config>
-    <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="false">127.0.0.1</domain>
-        <domain includeSubdomains="false">localhost</domain>
-    </domain-config>
+    <base-config cleartextTrafficPermitted="true" />
 </network-security-config>

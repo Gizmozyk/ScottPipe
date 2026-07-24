@@ -67,9 +67,10 @@ Endpoints (JSON):
 traffic by default for apps targeting API 28+, with no automatic exception
 for loopback addresses — even `127.0.0.1` gets rejected
 (`CLEARTEXT communication to 127.0.0.1 not permitted`) without an explicit
-network security config. `res/xml/network_security_config.xml` allows it
-for `127.0.0.1`/`localhost` only; everything else in the app still
-requires HTTPS as normal.
+network security config. `res/xml/network_security_config.xml` originally
+allowed it for `127.0.0.1`/`localhost` only; Phase D widened this to the
+whole app once the *parent* side also needed to reach the kid device's
+real LAN IP (see Phase D below for why).
 
 ## Built: pairing and authenticated requests (Phase C)
 
@@ -100,19 +101,61 @@ Accepted for now given the low blast radius (replaying an old approve/deny
 on a same-LAN family network) — see the ADR.
 
 **NSD advertising.** `KidModeNsdAdvertiser` registers the running server
-under `_scottpipe._tcp.` whenever Kid Mode's service is running, so a
-future Parent Mode (Phase D) can discover it instead of needing an IP
-typed in. **Not fully verified**: the emulator used for development can't
-carry mDNS traffic to the host or between instances, so only "the
-registration call doesn't throw" has actually been confirmed here — real
-cross-device discovery needs Phase D testing on real hardware. See
+under `_scottpipe._tcp.` whenever Kid Mode's service is running, so Parent
+Mode (Phase D, see below) can discover it instead of needing an IP typed
+in. **Still not fully verified end-to-end**: the emulator used for
+development can't carry mDNS traffic between instances, so only "the
+registration/discovery calls don't throw" has actually been confirmed —
+real cross-device discovery needs testing on real hardware. See
 [testing.md](../testing.md).
 
-## Planned: remote approval UI (Phase D)
+## Built: Parent Mode (Phase D)
 
-A "Parent Mode" UI (the same app, not a separate app) that discovers
-paired kid devices over NSD, lists their pending requests, and
-approves/denies them remotely. Not built yet. See
-[0001-kid-mode-architecture.md](../adr/0001-kid-mode-architecture.md) for
-why these phases are ordered this way and the alternatives that were
-considered and rejected.
+Settings → Kid mode → "Parent Mode" opens a screen (the same app, not a
+separate app, run on the parent's own phone) with two sections: paired
+kid devices, and kid devices discovered on the LAN via
+`KidModeNsdDiscoverer` (the client-side counterpart to
+`KidModeNsdAdvertiser`).
+
+**Pairing from the parent's side.** Tapping a discovered device, or
+"Connect manually" (host/port/code entered by hand), prompts for the
+pairing code shown on the kid device and calls `POST /pair` via
+`KidModeApiClient` (plain OkHttp, reusing `KidModeHmac` as-is to sign
+later requests — no Android/Keystore/DB dependency of its own). On
+success, `ParentPairingManager` stores the result (`ParentPairingEntity`:
+kid device id/name, host, port, Keystore-AES-wrapped shared secret — the
+mirror image of what the kid device stores about a parent via
+`PairedDeviceEntity`). Unlike the kid side's soft-revoke, unpairing here
+is a hard delete: this side has no audit-trail need for keeping a record
+of a removed pairing.
+
+**"Connect manually" is a real feature, not just a test workaround.**
+mDNS/NSD is commonly blocked by AP/client isolation on consumer routers
+and mesh Wi-Fi systems, so a manual host/port fallback matters for actual
+families' networks, not only for this dev environment's emulator
+limitations.
+
+**Viewing and acting on requests.** Tapping a paired device opens a
+screen that fetches `/pending-requests` on open and auto-refreshes every
+3 seconds while visible (plus manual pull-to-refresh) — deliberately
+frequent, since the whole point is that the kid's action is sitting
+blocked *right now*. Approve/deny buttons call `/approve/{id}`/`/deny/{id}`
+directly — these hit the exact same endpoints Phases B/C already proved
+share `KidModeGate` with the local PIN button, so the kid's own waiting
+dialog reacts identically no matter which device approved it. A `401`
+(the kid device revoked this pairing) shows a clear message with an
+action to remove the stale pairing, rather than a raw error.
+
+**Gotcha hit building this:** the network security config fix above —
+Parent Mode's outgoing connection to the kid's LAN IP was blocked by the
+same cleartext restriction Phase B hit for loopback, except this time
+there's no fixed hostname to allowlist (the kid device's IP is
+DHCP-assigned), so the fix had to become an app-wide
+`cleartextTrafficPermitted="true"` base-config instead of a scoped
+domain-config. This doesn't weaken the rest of the app: nothing outside
+Kid Mode ever uses an `http://` URL, so no other traffic is affected.
+
+See [0001-kid-mode-architecture.md](../adr/0001-kid-mode-architecture.md)
+for why these phases were ordered this way, and
+[testing.md](../testing.md) for how Phase D was verified end-to-end
+without needing real hardware yet.

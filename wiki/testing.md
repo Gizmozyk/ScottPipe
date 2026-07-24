@@ -40,6 +40,36 @@ whatever's needed (e.g. a channel page) via **search** instead of tapping
 into a video, to avoid triggering decode. Only trigger real playback when
 that's specifically what's being verified.
 
+## Running two emulators (Phase D dual-device testing)
+
+Parent Mode needs a genuinely separate device to test against, not just
+`curl` standing in for one. Since two emulator instances can't reach each
+other directly (each is behind its own NAT and neither carries multicast
+for NSD), the workaround is to route through the *host* machine:
+
+```
+# Create a second AVD once (same image as scottpipe-test):
+avdmanager create avd -n scottpipe-parent \
+  -k "system-images;android-35;google_apis;x86_64" -d pixel_6 --force
+
+emulator -avd scottpipe-parent -no-window -no-audio -no-boot-anim \
+  -gpu swiftshader_indirect -no-snapshot &
+
+# Install the debug APK on both (adb -s <serial> ...), enable Kid Mode on
+# one ("kid"), get a pairing code from it, then on the other ("parent")
+# expose the kid's server on the host and reach it via the emulator's
+# built-in host-loopback alias:
+adb -s <kid-serial> forward tcp:46821 tcp:46821
+# In the parent's "Connect manually" dialog: host = 10.0.2.2, port = 46821
+```
+
+This exercises the *entire* real Parent Mode UI and protocol end-to-end
+(pairing, viewing pending requests, approve, deny, revoke → `401` →
+"pair again") — genuinely more coverage than curl-as-a-stand-in-device
+testing reaches. What it still doesn't cover: actual NSD discovery
+between two independent devices, since `10.0.2.2` bypasses discovery
+entirely. That still needs real hardware (see the Phase D section below).
+
 ## Driving the UI from the command line
 
 Prefer `adb shell uiautomator dump` over guessing tap coordinates from a
@@ -76,6 +106,37 @@ compiles to a real DEX-based APK for on-device install, and D8 rejects
 spaces in method names below DEX version 040
 (`Space characters in SimpleName '...' are not allowed prior to DEX
 version 040`). Use plain camelCase method names in `androidTest` instead.
+
+**Gotcha — `--` inside an XML comment is illegal, and it's easy to type
+one by accident.** Hit twice now (Phase B's `network_security_config.xml`,
+then Phase D's rewrite of the same file): a plain-English "—"-style aside
+written as `--` inside `<!-- -->` fails the XML parser
+(`The string "--" is not permitted within comments`), and the resulting
+error (`Failed to parse XML file ... network_security_config.xml`) doesn't
+point at the actual bad line as clearly as it could. Use `;` or a full
+word instead of `--` in XML comments, always.
+
+**Gotcha — a bumped `DB_VER_N` needs its `DatabaseMigrationTest` step added
+*before* running the suite, not after hitting the failure.** Every
+existing test in that file migrates a database up to the *previous*
+latest version and then calls `getMigratedDatabase()`, which opens Room at
+whatever the *current* runtime `AppDatabase` version is — so a version
+bump without a matching `runMigrationsAndValidate(..., DB_VER_N, ...,
+MIGRATION_(N-1)_N)` step added to all of them fails with `A migration from
+N-1 to N was required but not found`. Hit once in Phase C, pre-empted
+successfully in Phase D by adding the step proactively.
+
+**Gotcha — `NewPipeDatabase.kt`'s `addMigrations(...)` list is a separate,
+easy-to-miss place a migration needs registering.** Phase C added
+`MIGRATION_10_11` to `Migrations.kt` and imported it into
+`NewPipeDatabase.kt`, but never actually passed it to `.addMigrations(...)`
+— a real bug that instrumented tests didn't catch (they build `Room`
+directly via `MigrationTestHelper`, bypassing this class entirely) but
+would have crashed any real user's upgrade from a pre-Phase-C install.
+Found and fixed while adding Phase D's own migration; when adding a new
+`MIGRATION_N_N+1`, check both `Migrations.kt` *and* the actual
+`.addMigrations(...)` call site in `NewPipeDatabase.kt`, not just the
+import.
 
 
 ## Kid Mode manual verification (Phase A)
@@ -180,3 +241,60 @@ actually been confirmed: the registration call completes without a
 `adb logcat -s KidModeNsdAdvertiser`). Genuine "does a second device
 discover this on the LAN" testing needs real hardware, which is Phase D's
 territory (the phase that actually builds something to discover it with).
+
+## Kid Mode Parent Mode manual verification (Phase D)
+
+Full walkthrough performed and passing as of 2026-07-24, using the
+dual-emulator setup described above (`scottpipe-test` as the kid device,
+a second `scottpipe-parent` AVD as the parent device, connected via
+`10.0.2.2` + `adb forward` since NSD discovery doesn't work between
+emulator instances):
+
+- Settings → Kid mode → "Parent Mode" opens with empty "Paired devices"
+  and "Discovered devices" sections (no crash, no NSD `SecurityException`
+  in `adb logcat -s KidModeNsdDiscoverer`)
+- "Connect manually" with the kid device's `10.0.2.2`/`46821` and a fresh
+  pairing code succeeds, storing the pairing and showing it in "Paired
+  devices" (label was the entered host, since manual connections have no
+  discovered name to use)
+- Tapping the paired device opens the requests screen, which auto-refreshed
+  and picked up a real pending request within 3 seconds of triggering a
+  blocked subscribe on the kid device (no manual refresh needed)
+- **Approve** on the parent's screen made the kid device's already-open
+  waiting dialog dismiss and the channel's button flip to "SUBSCRIBED" —
+  confirms the remote path reuses `KidModeGate` exactly like Phases B/C's
+  curl-based testing already proved, now via the real production UI on a
+  separate device
+- **Deny** on a second request correctly left the channel unsubscribed
+- Revoking the pairing from the kid device's "Paired devices" screen made
+  the parent's next auto-refresh (within 3s) show the "Access revoked"
+  dialog; "Remove pairing" deleted the local `ParentPairingEntity` and
+  returned to the device list
+- No `FATAL EXCEPTION` on either emulator across the whole session
+  (`adb logcat -d | grep -i "FATAL EXCEPTION"`)
+
+**Bug caught during this walkthrough, not by any automated test:** the
+first pairing attempt appeared to do nothing — the dialog closed but no
+device showed up in "Paired devices," and neither `adb logcat` (grepped
+for exception/kidmode/parentmode keywords) nor a UI dump taken a couple
+seconds later showed any trace of a failure (the error Toast the code
+does show almost certainly appeared and disappeared before any dump was
+taken — Toasts aren't retrievable after the fact the way persistent UI
+state is). Root cause, found by testing pairing manually with
+`Content-Type` variations in Phase C and reasoning from there: the
+cleartext-traffic block hitting `KidModeApiClient`'s connection to the
+kid's real LAN IP, since the existing `network_security_config.xml` only
+allowlisted `127.0.0.1`/`localhost`, which Phase D's client never talks
+to. Fixed by widening the network security config (see the ADR). Worth
+remembering: a Toast-only error path is easy to miss entirely during
+`adb`-driven testing since there's no reliable way to capture its text
+after it's gone — for anything that might fail on the very first try,
+prefer checking `adb logcat -d` immediately (within a second or two) or
+adding a temporary persistent log line while debugging, rather than
+relying on the Toast having been caught in time.
+
+**Still not verified**: genuine NSD discovery between two independent
+devices (this walkthrough bypassed it entirely via manual connect). That
+needs the user's own real phone on the same Wi-Fi as a kid device — worth
+doing once Phase D is otherwise considered stable, since this is the
+first phase where trying that is actually meaningful.
