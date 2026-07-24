@@ -17,6 +17,15 @@ abstract class ApprovalRequestDAO {
     @Query("SELECT * FROM kid_mode_approval_requests WHERE uid = :requestId")
     abstract fun getById(requestId: Long): Flowable<ApprovalRequestEntity>
 
+    /**
+     * One-shot lookup, unlike [getById]: a `Flowable<T>` query with zero matching rows never
+     * emits (it waits indefinitely for a future write, it doesn't error), so `.blockingFirst()`
+     * on [getById] hangs forever for an id that doesn't exist. Use this instead whenever the id
+     * might not exist -- e.g. resolving an approve/deny request from the HTTP server.
+     */
+    @Query("SELECT * FROM kid_mode_approval_requests WHERE uid = :requestId")
+    abstract fun getByIdOnce(requestId: Long): ApprovalRequestEntity?
+
     @Query("SELECT * FROM kid_mode_approval_requests WHERE status = 'PENDING' ORDER BY created_at ASC")
     abstract fun getPending(): Flowable<List<ApprovalRequestEntity>>
 

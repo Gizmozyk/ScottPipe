@@ -1,7 +1,7 @@
 # 0001: Kid mode architecture
 
-Status: accepted (Phase A implemented; later phases not yet built)
-Date: 2026-07-23
+Status: accepted (Phases A and B implemented; C and D not yet built)
+Date: 2026-07-23, updated 2026-07-23 (Phase B)
 
 ## Context
 
@@ -51,15 +51,25 @@ just protects the on-disk hash from offline brute-forcing if it leaks
 a whole extra dependency for what a dozen lines of `javax.crypto`
 already covers here.
 
-**Embedded HTTP server (Phase B, not yet built): NanoHTTPD over Ktor
-server.** This app is Android-only for this feature (the `:shared` KMP
-module has none of the gating logic), so there's no cross-platform reason
-to reach for Ktor's server engines. NanoHTTPD is a single small dependency
-purpose-built for exactly this — embedding a lightweight server inside an
-Android app process — versus pulling in Ktor's larger server stack
-(coroutine engine, content negotiation, etc.) that nothing else in the app
-uses. `kotlinx-serialization-json` (already a dependency) still handles
-the JSON payloads either way.
+**Embedded HTTP server (Phase B): NanoHTTPD over Ktor server.** This app is
+Android-only for this feature (the `:shared` KMP module has none of the
+gating logic), so there's no cross-platform reason to reach for Ktor's
+server engines. NanoHTTPD is a single small dependency purpose-built for
+exactly this — embedding a lightweight server inside an Android app
+process — versus pulling in Ktor's larger server stack (coroutine engine,
+content negotiation, etc.) that nothing else in the app uses.
+`kotlinx-serialization-json` (already a dependency) still handles the JSON
+payloads either way.
+
+**Phase B's server binds to loopback (`127.0.0.1`), not `0.0.0.0`, until
+Phase C ships auth.** Phase C is what adds the PIN-code pairing handshake
+and authenticates requests; shipping Phase B's `/approve`/`/deny` endpoints
+reachable from the whole LAN before that exists would mean anyone on the
+same Wi-Fi could hit them with no auth at all for however long elapses
+before Phase C lands. Binding to loopback only costs nothing in
+testability now (`adb forward` reaches it fine for manual/automated
+testing) and Phase C's own work is what flips the bind address once
+there's something protecting it.
 
 **Data model kept independent of real subscriptions.** A separate
 `kid_mode_approved_channels` table (rather than just subscribing the kid
@@ -69,10 +79,11 @@ gated action.
 
 ## Consequences
 
-- No remote approval yet — Phase A only ships the local, same-device
-  approval flow (a parent physically hands the kid's device the PIN
-  entry). See [features/kid-mode.md](../features/kid-mode.md) for what's
-  planned in later phases.
+- No remote approval yet — Phase B's HTTP server exists but is
+  loopback-only, so approving still requires physical access to the kid's
+  device (either the PIN button directly, or `adb forward` for testing).
+  See [features/kid-mode.md](../features/kid-mode.md) for what's planned
+  in Phases C and D.
 - Because `ApprovalRequestEntity` status changes drive the UI reactively
   (a Room `Flowable`), later phases only need to make something else write
   `APPROVED`/`DENIED` to that row — the waiting screen and the actions it

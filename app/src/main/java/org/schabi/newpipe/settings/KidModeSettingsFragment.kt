@@ -9,6 +9,7 @@ import androidx.preference.SwitchPreferenceCompat
 import org.schabi.newpipe.R
 import org.schabi.newpipe.kidmode.KidModePinManager
 import org.schabi.newpipe.kidmode.KidModePinPrompt
+import org.schabi.newpipe.kidmode.server.KidModeServerService
 
 /**
  * See `wiki/features/kid-mode.md` for what Kid Mode does and
@@ -46,9 +47,11 @@ class KidModeSettingsFragment : BasePreferenceFragment() {
     private fun onToggleOn(pinManager: KidModePinManager) {
         if (pinManager.isPinSet()) {
             enabledPreference.isChecked = true
+            KidModeServerService.start(requireContext())
         } else {
             KidModePinPrompt.showSetPin(requireContext(), layoutInflater) {
                 enabledPreference.isChecked = true
+                KidModeServerService.start(requireContext())
             }
         }
     }
@@ -56,6 +59,7 @@ class KidModeSettingsFragment : BasePreferenceFragment() {
     private fun onToggleOff(pinManager: KidModePinManager) {
         KidModePinPrompt.show(requireContext(), layoutInflater) {
             enabledPreference.isChecked = false
+            KidModeServerService.stop(requireContext())
         }
     }
 }

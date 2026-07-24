@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Apps targeting API 28+ block cleartext (non-HTTPS) traffic by default, with no automatic
+  exception for loopback addresses. Kid Mode's embedded local server (see
+  org.schabi.newpipe.kidmode.server.ApprovalHttpServer) is plain HTTP and loopback-only, so it
+  needs this explicit exception; everything else in the app still talks HTTPS as normal.
+-->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">localhost</domain>
+    </domain-config>
+</network-security-config>

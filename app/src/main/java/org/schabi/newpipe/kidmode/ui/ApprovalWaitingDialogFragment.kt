@@ -10,18 +10,15 @@ import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.DialogFragment
 import io.reactivex.rxjava3.android.schedulers.AndroidSchedulers
-import io.reactivex.rxjava3.core.Single
 import io.reactivex.rxjava3.disposables.CompositeDisposable
 import io.reactivex.rxjava3.schedulers.Schedulers
 import org.schabi.newpipe.NewPipeDatabase
 import org.schabi.newpipe.R
-import org.schabi.newpipe.database.subscription.SubscriptionEntity
+import org.schabi.newpipe.kidmode.KidModeGate
 import org.schabi.newpipe.kidmode.KidModePinPrompt
 import org.schabi.newpipe.kidmode.db.ApprovalRequestEntity
 import org.schabi.newpipe.kidmode.db.ApprovalRequestStatus
 import org.schabi.newpipe.kidmode.db.ApprovalRequestType
-import org.schabi.newpipe.local.subscription.SubscriptionManager
-import org.schabi.newpipe.util.ExtractorHelper
 import org.schabi.newpipe.util.NavigationHelper
 import org.schabi.newpipe.util.ThemeHelper
 
@@ -31,6 +28,10 @@ import org.schabi.newpipe.util.ThemeHelper
  * `wiki/features/kid-mode.md` -- a future phase replaces the "Approve as parent" button here with
  * a request that a paired parent device can approve remotely, but this dialog and the
  * [ApprovalRequestEntity] row it observes are exactly what that later phase reuses.
+ *
+ * All the actual completion work (marking a request resolved, subscribing on approval) happens in
+ * [KidModeGate], shared with the embedded HTTP server -- this dialog only reacts to the row's
+ * status once [KidModeGate] has already finished it, it never repeats that work itself.
  */
 class ApprovalWaitingDialogFragment : DialogFragment() {
     private val disposables = CompositeDisposable()
@@ -80,7 +81,8 @@ class ApprovalWaitingDialogFragment : DialogFragment() {
             }
 
             ApprovalRequestStatus.APPROVED -> {
-                onApproved(request, onDone = ::dismiss)
+                onApproved(request)
+                dismiss()
             }
 
             ApprovalRequestStatus.DENIED -> {
@@ -95,36 +97,28 @@ class ApprovalWaitingDialogFragment : DialogFragment() {
     }
 
     private fun approve() {
-        val database = NewPipeDatabase.getInstance(requireContext())
-        disposables.add(
-            Single.fromCallable {
-                database.approvalRequestDAO().updateStatus(
-                    requestId,
-                    ApprovalRequestStatus.APPROVED,
-                    System.currentTimeMillis()
-                )
-            }
-                .subscribeOn(Schedulers.io())
-                .subscribe()
-        )
+        val context = requireContext().applicationContext
+        // Deliberately not added to `disposables` (cleared in onStop()): approval -- which may
+        // involve a network fetch for a subscribe request -- must finish even if the dialog is
+        // dismissed before it completes.
+        KidModeGate(context).approve(requestId)
+            .subscribeOn(Schedulers.io())
+            .observeOn(AndroidSchedulers.mainThread())
+            .subscribe({}, {
+                Toast.makeText(context, R.string.general_error, Toast.LENGTH_SHORT).show()
+            })
     }
 
     private fun deny() {
-        val database = NewPipeDatabase.getInstance(requireContext())
+        val context = requireContext().applicationContext
         disposables.add(
-            Single.fromCallable {
-                database.approvalRequestDAO().updateStatus(
-                    requestId,
-                    ApprovalRequestStatus.DENIED,
-                    System.currentTimeMillis()
-                )
-            }
+            KidModeGate(context).deny(requestId)
                 .subscribeOn(Schedulers.io())
                 .subscribe()
         )
     }
 
-    private fun onApproved(request: ApprovalRequestEntity, onDone: () -> Unit) {
+    private fun onApproved(request: ApprovalRequestEntity) {
         when (request.requestType) {
             ApprovalRequestType.PLAY_VIDEO -> {
                 NavigationHelper.openVideoDetailFragment(
@@ -136,34 +130,14 @@ class ApprovalWaitingDialogFragment : DialogFragment() {
                     null,
                     false
                 )
-                onDone()
             }
 
             ApprovalRequestType.SUBSCRIBE_CHANNEL -> {
-                // Deliberately not added to `disposables` (cleared in onStop()): this must
-                // finish even if the dialog is dismissed before the network fetch completes.
-                val context = requireContext().applicationContext
-                ExtractorHelper.getChannelInfo(request.serviceId, request.targetUrl, false)
-                    .map(SubscriptionEntity::from)
-                    .doOnSuccess { subscription ->
-                        SubscriptionManager(context).insertSubscription(subscription)
-                    }
-                    .subscribeOn(Schedulers.io())
-                    .observeOn(AndroidSchedulers.mainThread())
-                    .subscribe(
-                        { subscription ->
-                            Toast.makeText(
-                                context,
-                                getString(R.string.kid_mode_subscribed_toast, subscription.name),
-                                Toast.LENGTH_SHORT
-                            ).show()
-                            onDone()
-                        },
-                        {
-                            Toast.makeText(context, R.string.general_error, Toast.LENGTH_SHORT).show()
-                            onDone()
-                        }
-                    )
+                Toast.makeText(
+                    requireContext(),
+                    getString(R.string.kid_mode_subscribed_toast, request.targetTitle),
+                    Toast.LENGTH_SHORT
+                ).show()
             }
         }
     }

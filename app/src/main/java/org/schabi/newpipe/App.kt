@@ -31,6 +31,8 @@ import org.schabi.newpipe.error.ReCaptchaActivity
 import org.schabi.newpipe.extractor.NewPipe
 import org.schabi.newpipe.extractor.downloader.Downloader
 import org.schabi.newpipe.extractor.services.youtube.extractors.YoutubeStreamExtractor
+import org.schabi.newpipe.kidmode.KidModeGate
+import org.schabi.newpipe.kidmode.server.KidModeServerService
 import org.schabi.newpipe.ktx.hasAssignableCause
 import org.schabi.newpipe.settings.NewPipeSettings
 import org.schabi.newpipe.util.BridgeStateSaverInitializer
@@ -106,6 +108,9 @@ open class App :
         BridgeStateSaverInitializer.init(this)
         StateSaver.init(this)
         initNotificationChannels()
+        if (KidModeGate(this).isEnabled()) {
+            KidModeServerService.start(this)
+        }
 
         ServiceHelper.initServices(this)
 
@@ -274,8 +279,23 @@ open class App :
                 ).setName(getString(R.string.streams_notification_channel_name))
                 .setDescription(getString(R.string.streams_notification_channel_description))
                 .build()
+        val kidModeChannel =
+            NotificationChannelCompat
+                .Builder(
+                    getString(R.string.kid_mode_notification_channel_id),
+                    NotificationManagerCompat.IMPORTANCE_LOW
+                ).setName(getString(R.string.kid_mode_notification_channel_name))
+                .setDescription(getString(R.string.kid_mode_notification_channel_description))
+                .build()
 
-        val channels = listOf(mainChannel, appUpdateChannel, hashChannel, errorReportChannel, newStreamChannel)
+        val channels = listOf(
+            mainChannel,
+            appUpdateChannel,
+            hashChannel,
+            errorReportChannel,
+            newStreamChannel,
+            kidModeChannel
+        )
 
         NotificationManagerCompat.from(this).createNotificationChannelsCompat(channels)
     }

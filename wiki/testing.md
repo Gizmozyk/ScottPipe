@@ -90,3 +90,28 @@ real (live) YouTube data:
 
 See [features/kid-mode.md](features/kid-mode.md) and
 [adr/0001-kid-mode-architecture.md](adr/0001-kid-mode-architecture.md).
+
+## Kid Mode HTTP server manual verification (Phase B)
+
+The embedded server binds to loopback only (see the ADR), so reach it from
+the host via `adb forward` rather than the emulator's own IP:
+
+```
+adb forward tcp:46821 tcp:46821   # 46821 = ApprovalHttpServer.DEFAULT_PORT
+curl http://localhost:46821/ping
+curl http://localhost:46821/pending-requests
+curl -X POST http://localhost:46821/approve/<id>
+curl -X POST http://localhost:46821/deny/<id>
+```
+
+With Kid Mode enabled, a persistent "Kid mode is on" notification should be
+visible (`adb shell dumpsys notification --noredact | grep -A5 newpipeKidMode`
+or just check the notification shade) — confirms `KidModeServerService`
+is actually running as a foreground service, not just that the port
+happens to respond. Trigger a gated action from the Phase A flow first so
+`/pending-requests` has something to show; approving via `curl` should
+make the kid device's still-open waiting dialog react exactly like the
+local PIN button does (dismiss, and for a subscribe request the
+subscription should actually appear) — this is the real proof that the
+HTTP path and the local path share the same completion logic
+(`KidModeGate.approve()`/`.deny()`), not two independent implementations.

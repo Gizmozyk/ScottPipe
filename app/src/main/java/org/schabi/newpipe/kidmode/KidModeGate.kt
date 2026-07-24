@@ -12,7 +12,10 @@ import org.schabi.newpipe.NewPipeDatabase
 import org.schabi.newpipe.R
 import org.schabi.newpipe.database.subscription.SubscriptionEntity
 import org.schabi.newpipe.kidmode.db.ApprovalRequestEntity
+import org.schabi.newpipe.kidmode.db.ApprovalRequestStatus
 import org.schabi.newpipe.kidmode.db.ApprovalRequestType
+import org.schabi.newpipe.local.subscription.SubscriptionManager
+import org.schabi.newpipe.util.ExtractorHelper
 
 /**
  * Central gate for the two Kid Mode-restricted actions: playing a video from a channel the kid
@@ -91,5 +94,51 @@ class KidModeGate(context: Context) {
                 )
             )
         }.subscribeOn(Schedulers.io())
+    }
+
+    /**
+     * Approves a pending request: performs whatever completion action the request type needs
+     * (currently, subscribing -- re-fetching the channel's current info rather than trusting
+     * whatever was cached when the request was made) and only then marks it `APPROVED`, so
+     * anything observing the row reactively (e.g. [org.schabi.newpipe.kidmode.ui.ApprovalWaitingDialogFragment])
+     * never needs to repeat the completion work itself -- it can just react to the result. Used
+     * both by the local same-device approval button and, in a later phase, the embedded HTTP
+     * server: approval always happens on the kid's own device, however it was triggered.
+     */
+    fun approve(requestId: Long): Single<ApprovalRequestEntity> {
+        return requireRequest(requestId)
+            .flatMap { request ->
+                when (request.requestType) {
+                    ApprovalRequestType.PLAY_VIDEO -> Single.just(Unit)
+                    ApprovalRequestType.SUBSCRIBE_CHANNEL -> completeSubscribeApproval(request).map {}
+                }.flatMap { markStatus(requestId, ApprovalRequestStatus.APPROVED) }
+            }
+            .subscribeOn(Schedulers.io())
+    }
+
+    fun deny(requestId: Long): Single<ApprovalRequestEntity> {
+        return requireRequest(requestId)
+            .flatMap { markStatus(requestId, ApprovalRequestStatus.DENIED) }
+            .subscribeOn(Schedulers.io())
+    }
+
+    private fun requireRequest(requestId: Long): Single<ApprovalRequestEntity> {
+        return Single.fromCallable {
+            database.approvalRequestDAO().getByIdOnce(requestId)
+                ?: throw NoSuchElementException("No approval request with id $requestId")
+        }
+    }
+
+    private fun markStatus(requestId: Long, status: ApprovalRequestStatus): Single<ApprovalRequestEntity> {
+        return Single.fromCallable {
+            database.approvalRequestDAO().updateStatus(requestId, status, System.currentTimeMillis())
+            database.approvalRequestDAO().getByIdOnce(requestId)!!
+        }
+    }
+
+    private fun completeSubscribeApproval(request: ApprovalRequestEntity): Single<SubscriptionEntity> {
+        return ExtractorHelper.getChannelInfo(request.serviceId, request.targetUrl, false)
+            .map(SubscriptionEntity::from)
+            .doOnSuccess { subscription -> SubscriptionManager(appContext).insertSubscription(subscription) }
     }
 }

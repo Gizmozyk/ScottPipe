@@ -220,6 +220,10 @@
     <string name="streams_notification_channel_description">Notifications about new streams for subscriptions</string>
     <string name="error_report_channel_name">Error report notification</string>
     <string name="error_report_channel_description">Notifications to report errors</string>
+    <string name="kid_mode_notification_channel_name">Kid mode</string>
+    <string name="kid_mode_notification_channel_description">Shown while kid mode is listening for parent approval</string>
+    <string name="kid_mode_notification_title">Kid mode is on</string>
+    <string name="kid_mode_notification_text">Listening for parent approval requests</string>
     <string name="unknown_content">[Unknown]</string>
     <string name="switch_to_background">Switch to Background</string>
     <string name="switch_to_popup">Switch to Popup</string>

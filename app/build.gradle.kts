@@ -269,6 +269,9 @@ dependencies {
     // HTTP client
     implementation(libs.squareup.okhttp)
 
+    // Embedded HTTP server (Kid Mode local approval)
+    implementation(libs.nanohttpd)
+
     // Media player
     implementation(libs.google.exoplayer.core)
     implementation(libs.google.exoplayer.dash)
