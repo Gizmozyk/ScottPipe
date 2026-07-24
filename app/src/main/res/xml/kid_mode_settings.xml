@@ -11,4 +11,16 @@
         app:singleLineTitle="false"
         app:iconSpaceReserved="false" />
 
+    <Preference
+        android:key="@string/kid_mode_pair_device_key"
+        android:summary="@string/kid_mode_pair_device_summary"
+        android:title="@string/kid_mode_pair_device_title"
+        app:singleLineTitle="false"
+        app:iconSpaceReserved="false" />
+
+    <PreferenceScreen
+        android:fragment="org.schabi.newpipe.settings.KidModePairedDevicesFragment"
+        android:title="@string/kid_mode_paired_devices_title"
+        app:iconSpaceReserved="false" />
+
 </PreferenceScreen>

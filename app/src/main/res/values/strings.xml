@@ -175,6 +175,16 @@
     <string name="kid_mode_deny">Deny</string>
     <string name="kid_mode_denied_toast">Request denied</string>
     <string name="kid_mode_subscribed_toast">Subscribed to %1$s</string>
+    <string name="kid_mode_pair_device_title">Pair a parent device</string>
+    <string name="kid_mode_pair_device_summary">Show a code a parent device can use to pair over the same Wi-Fi</string>
+    <string name="kid_mode_pairing_code_title">Pairing code</string>
+    <string name="kid_mode_pairing_code_message">Enter this code on the parent\'s device within 5 minutes:\n\n%1$s</string>
+    <string name="kid_mode_pairing_unavailable">Kid mode must be on to pair a device</string>
+    <string name="kid_mode_paired_devices_title">Paired devices</string>
+    <string name="kid_mode_no_paired_devices">No devices paired yet</string>
+    <string name="kid_mode_paired_device_summary">Paired %1$s</string>
+    <string name="kid_mode_revoke_device_title">Remove this device?</string>
+    <string name="kid_mode_revoke_device_message">\"%1$s\" will no longer be able to approve or deny requests</string>
     <string name="background_player_playing_toast">Playing in background</string>
     <string name="popup_playing_toast">Playing in popup mode</string>
     <string name="content">Content</string>

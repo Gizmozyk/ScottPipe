@@ -1516,4 +1516,5 @@
 
     <!-- Kid mode -->
     <string name="kid_mode_enabled_key">kid_mode_enabled</string>
+    <string name="kid_mode_pair_device_key">kid_mode_pair_device</string>
 </resources>

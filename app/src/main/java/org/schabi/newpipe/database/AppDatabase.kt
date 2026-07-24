@@ -35,10 +35,12 @@ import org.schabi.newpipe.kidmode.db.ApprovalRequestDAO
 import org.schabi.newpipe.kidmode.db.ApprovalRequestEntity
 import org.schabi.newpipe.kidmode.db.ApprovedChannelDAO
 import org.schabi.newpipe.kidmode.db.ApprovedChannelEntity
+import org.schabi.newpipe.kidmode.db.PairedDeviceDAO
+import org.schabi.newpipe.kidmode.db.PairedDeviceEntity
 
 @TypeConverters(Converters::class)
 @Database(
-    version = Migrations.DB_VER_10,
+    version = Migrations.DB_VER_11,
     entities = [
         SubscriptionEntity::class,
         SearchHistoryEntry::class,
@@ -53,7 +55,8 @@ import org.schabi.newpipe.kidmode.db.ApprovedChannelEntity
         FeedGroupSubscriptionEntity::class,
         FeedLastUpdatedEntity::class,
         ApprovalRequestEntity::class,
-        ApprovedChannelEntity::class
+        ApprovedChannelEntity::class,
+        PairedDeviceEntity::class
     ]
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -69,6 +72,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun subscriptionDAO(): SubscriptionDAO
     abstract fun approvalRequestDAO(): ApprovalRequestDAO
     abstract fun approvedChannelDAO(): ApprovedChannelDAO
+    abstract fun pairedDeviceDAO(): PairedDeviceDAO
 
     companion object {
         const val DATABASE_NAME: String = "newpipe.db"

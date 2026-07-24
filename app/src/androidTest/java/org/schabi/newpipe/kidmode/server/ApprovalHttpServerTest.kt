@@ -1,6 +1,7 @@
 package org.schabi.newpipe.kidmode.server
 
 import android.content.Context
+import android.util.Base64
 import androidx.test.core.app.ApplicationProvider
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
@@ -9,6 +10,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Before
 import org.junit.Test
 import org.schabi.newpipe.NewPipeDatabase
@@ -19,6 +21,7 @@ import org.schabi.newpipe.testUtil.TestDatabase
 
 class ApprovalHttpServerTest {
     private lateinit var server: ApprovalHttpServer
+    private lateinit var pairingSession: KidModePairingSession
     private lateinit var baseUrl: String
     private val client = OkHttpClient()
 
@@ -26,9 +29,10 @@ class ApprovalHttpServerTest {
     fun setUp() {
         TestDatabase.createReplacingNewPipeDatabase()
         val context = ApplicationProvider.getApplicationContext<Context>()
+        pairingSession = KidModePairingSession()
         // Port 0: let the OS pick a free port, so this never collides with a real
         // KidModeServerService instance that might also be running on the device.
-        server = ApprovalHttpServer(context, 0).apply { start() }
+        server = ApprovalHttpServer(context, 0, pairingSession).apply { start() }
         baseUrl = "http://127.0.0.1:${server.listeningPort}"
     }
 
@@ -48,34 +52,117 @@ class ApprovalHttpServerTest {
         createdAt = 1L
     )
 
-    private fun post(path: String) = client.newCall(
-        Request.Builder().url("$baseUrl$path").post("".toRequestBody("text/plain".toMediaTypeOrNull())).build()
-    ).execute()
+    private fun get(path: String, headers: Map<String, String> = emptyMap()): okhttp3.Response {
+        val builder = Request.Builder().url("$baseUrl$path")
+        headers.forEach { (name, value) -> builder.addHeader(name, value) }
+        return client.newCall(builder.build()).execute()
+    }
+
+    private fun post(path: String, body: String = "", headers: Map<String, String> = emptyMap()): okhttp3.Response {
+        val builder = Request.Builder()
+            .url("$baseUrl$path")
+            .post(body.toRequestBody("application/json".toMediaTypeOrNull()))
+        headers.forEach { (name, value) -> builder.addHeader(name, value) }
+        return client.newCall(builder.build()).execute()
+    }
+
+    /** Completes a real `/pair` handshake and returns headers that authenticate as that device. */
+    private fun pairAndGetAuthHeaders(method: String, path: String, body: String = ""): Map<String, String> {
+        val code = pairingSession.start(System.currentTimeMillis())
+        val response = post("/pair", """{"deviceName": "Test Parent", "code": "$code"}""")
+        val json = JSONObject(response.body!!.string())
+        val deviceId = json.getString("deviceId")
+        val secret = Base64.decode(json.getString("sharedSecret"), Base64.NO_WRAP)
+        val signature = KidModeHmac.sign(secret, KidModeHmac.message(method, path, body))
+        return mapOf("X-Kid-Mode-Device-Id" to deviceId, "X-Kid-Mode-Signature" to signature)
+    }
 
     @Test
     fun pingReturnsOk() {
-        val response = client.newCall(Request.Builder().url("$baseUrl/ping").build()).execute()
+        val response = get("/ping")
 
         assertEquals(200, response.code)
         assertEquals("pong", response.body!!.string())
     }
 
     @Test
-    fun pendingRequestsListsInsertedRequest() {
-        val uid = database().approvalRequestDAO().insert(newRequest())
+    fun pairingWithAValidCodeSucceeds() {
+        val code = pairingSession.start(System.currentTimeMillis())
 
-        val response = client.newCall(Request.Builder().url("$baseUrl/pending-requests").build()).execute()
+        val response = post("/pair", """{"deviceName": "Test Parent", "code": "$code"}""")
+
+        assertEquals(200, response.code)
+        val json = JSONObject(response.body!!.string())
+        assertNotNull(json.getString("deviceId"))
+        assertNotNull(json.getString("sharedSecret"))
+    }
+
+    @Test
+    fun pairingWithTheWrongCodeFails() {
+        pairingSession.start(System.currentTimeMillis())
+
+        val response = post("/pair", """{"deviceName": "Test Parent", "code": "000000"}""")
+
+        assertEquals(401, response.code)
+    }
+
+    @Test
+    fun pairingCodeIsSingleUse() {
+        val code = pairingSession.start(System.currentTimeMillis())
+        post("/pair", """{"deviceName": "First", "code": "$code"}""")
+
+        val response = post("/pair", """{"deviceName": "Second", "code": "$code"}""")
+
+        assertEquals(401, response.code)
+    }
+
+    @Test
+    fun pendingRequestsWithoutAuthHeadersIsRejected() {
+        val response = get("/pending-requests")
+
+        assertEquals(401, response.code)
+    }
+
+    @Test
+    fun pendingRequestsWithBadSignatureIsRejected() {
+        val headers = pairAndGetAuthHeaders("GET", "/pending-requests") +
+            mapOf("X-Kid-Mode-Signature" to "0000")
+
+        val response = get("/pending-requests", headers)
+
+        assertEquals(401, response.code)
+    }
+
+    @Test
+    fun pendingRequestsListsInsertedRequestWhenAuthenticated() {
+        val uid = database().approvalRequestDAO().insert(newRequest())
+        val headers = pairAndGetAuthHeaders("GET", "/pending-requests")
+
+        val response = get("/pending-requests", headers)
         val requests = JSONObject(response.body!!.string()).getJSONArray("requests")
 
+        assertEquals(200, response.code)
         assertEquals(1, requests.length())
         assertEquals(uid, requests.getJSONObject(0).getLong("id"))
     }
 
     @Test
-    fun approveMarksRequestApproved() {
+    fun approveWithoutAuthHeadersIsRejected() {
         val uid = database().approvalRequestDAO().insert(newRequest())
 
         val response = post("/approve/$uid")
+
+        assertEquals(401, response.code)
+        val updated = database().approvalRequestDAO().getById(uid).blockingFirst()
+        assertEquals(ApprovalRequestStatus.PENDING, updated.status)
+    }
+
+    @Test
+    fun approveMarksRequestApprovedWhenAuthenticated() {
+        val uid = database().approvalRequestDAO().insert(newRequest())
+        val headers = pairAndGetAuthHeaders("POST", "/approve/$uid")
+
+        val response = post("/approve/$uid", headers = headers)
 
         assertEquals(200, response.code)
         val updated = database().approvalRequestDAO().getById(uid).blockingFirst()
@@ -83,10 +170,11 @@ class ApprovalHttpServerTest {
     }
 
     @Test
-    fun denyMarksRequestDenied() {
+    fun denyMarksRequestDeniedWhenAuthenticated() {
         val uid = database().approvalRequestDAO().insert(newRequest())
+        val headers = pairAndGetAuthHeaders("POST", "/deny/$uid")
 
-        val response = post("/deny/$uid")
+        val response = post("/deny/$uid", headers = headers)
 
         assertEquals(200, response.code)
         val updated = database().approvalRequestDAO().getById(uid).blockingFirst()
@@ -94,15 +182,17 @@ class ApprovalHttpServerTest {
     }
 
     @Test
-    fun approveUnknownIdReturnsNotFound() {
-        val response = post("/approve/999999")
+    fun approveUnknownIdReturnsNotFoundWhenAuthenticated() {
+        val headers = pairAndGetAuthHeaders("POST", "/approve/999999")
+
+        val response = post("/approve/999999", headers = headers)
 
         assertEquals(404, response.code)
     }
 
     @Test
     fun unknownPathReturnsNotFound() {
-        val response = client.newCall(Request.Builder().url("$baseUrl/nope").build()).execute()
+        val response = get("/nope")
 
         assertEquals(404, response.code)
     }

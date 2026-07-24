@@ -10,6 +10,7 @@ import android.content.Context
 import androidx.room.Room.databaseBuilder
 import kotlin.concurrent.Volatile
 import org.schabi.newpipe.database.AppDatabase
+import org.schabi.newpipe.database.Migrations.MIGRATION_10_11
 import org.schabi.newpipe.database.Migrations.MIGRATION_1_2
 import org.schabi.newpipe.database.Migrations.MIGRATION_2_3
 import org.schabi.newpipe.database.Migrations.MIGRATION_3_4

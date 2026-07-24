@@ -8,47 +8,102 @@ import android.content.Context
 import fi.iki.elonen.NanoHTTPD
 import io.reactivex.rxjava3.core.Single
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.schabi.newpipe.NewPipeDatabase
 import org.schabi.newpipe.kidmode.KidModeGate
+import org.schabi.newpipe.kidmode.KidModePairingManager
 import org.schabi.newpipe.kidmode.db.ApprovalRequestEntity
 
 /**
- * Exposes Kid Mode's pending approval requests over local HTTP, so a paired device can someday
- * (Phase C/D, not built yet) list and approve/deny them instead of only the local PIN button in
- * [org.schabi.newpipe.kidmode.ui.ApprovalWaitingDialogFragment]. Bound to loopback only for now --
- * see `wiki/adr/0001-kid-mode-architecture.md` for why, and what changes that in a later phase.
+ * Exposes Kid Mode's pending approval requests over local HTTP, so a paired device can (Phase D,
+ * not built yet) list and approve/deny them instead of only the local PIN button in
+ * [org.schabi.newpipe.kidmode.ui.ApprovalWaitingDialogFragment]. Bound to all interfaces now that
+ * requests are authenticated -- see `wiki/adr/0001-kid-mode-architecture.md` for why Phase B kept
+ * this loopback-only and what changed for Phase C.
  *
  * All approve/deny logic is delegated to [KidModeGate], shared with the local dialog, so there's
- * exactly one place that performs a request's completion work (e.g. subscribing).
+ * exactly one place that performs a request's completion work (e.g. subscribing). All pairing/
+ * auth logic is delegated to [KidModePairingManager] likewise.
  */
-class ApprovalHttpServer(context: Context, port: Int) : NanoHTTPD(LOOPBACK_ADDRESS, port) {
+class ApprovalHttpServer(
+    context: Context,
+    port: Int,
+    private val pairingSession: KidModePairingSession
+) : NanoHTTPD(BIND_ADDRESS, port) {
     private val appContext = context.applicationContext
     private val database = NewPipeDatabase.getInstance(appContext)
     private val kidModeGate = KidModeGate(appContext)
+    private val pairingManager = KidModePairingManager(appContext)
 
     override fun serve(session: IHTTPSession): Response {
         val uri = session.uri
+        val method = session.method.name
+
         return try {
+            val body = if (session.method == Method.POST) readBody(session) else ""
             when {
                 session.method == Method.GET && uri == "/ping" ->
                     textResponse(Response.Status.OK, "pong")
 
+                session.method == Method.POST && uri == "/pair" ->
+                    handlePair(body)
+
                 session.method == Method.GET && uri == "/pending-requests" ->
-                    pendingRequestsResponse()
+                    withAuth(session, method, uri, body) { pendingRequestsResponse() }
 
                 session.method == Method.POST && uri.startsWith(APPROVE_PREFIX) ->
-                    resolveResponse(uri.removePrefix(APPROVE_PREFIX)) { kidModeGate.approve(it) }
+                    withAuth(session, method, uri, body) {
+                        resolveResponse(uri.removePrefix(APPROVE_PREFIX)) { kidModeGate.approve(it) }
+                    }
 
                 session.method == Method.POST && uri.startsWith(DENY_PREFIX) ->
-                    resolveResponse(uri.removePrefix(DENY_PREFIX)) { kidModeGate.deny(it) }
+                    withAuth(session, method, uri, body) {
+                        resolveResponse(uri.removePrefix(DENY_PREFIX)) { kidModeGate.deny(it) }
+                    }
 
                 else -> jsonError(Response.Status.NOT_FOUND, "not found")
             }
         } catch (e: Exception) {
             jsonError(Response.Status.INTERNAL_ERROR, e.message ?: "error")
         }
+    }
+
+    private fun withAuth(session: IHTTPSession, method: String, uri: String, body: String, handler: () -> Response): Response {
+        val deviceId = session.headers[DEVICE_ID_HEADER]
+        val signature = session.headers[SIGNATURE_HEADER]
+        if (deviceId.isNullOrBlank() || signature.isNullOrBlank()) {
+            return jsonError(Response.Status.UNAUTHORIZED, "missing auth headers")
+        }
+        if (!pairingManager.authenticate(deviceId, method, uri, body, signature)) {
+            return jsonError(Response.Status.UNAUTHORIZED, "invalid signature")
+        }
+        return handler()
+    }
+
+    private fun handlePair(body: String): Response {
+        val request = try {
+            Json.decodeFromString<PairRequestDto>(body)
+        } catch (e: Exception) {
+            return jsonError(Response.Status.BAD_REQUEST, "invalid request")
+        }
+
+        if (!pairingSession.consumeIfValid(request.code, System.currentTimeMillis())) {
+            return jsonError(Response.Status.UNAUTHORIZED, "invalid or expired code")
+        }
+
+        val result = pairingManager.pair(request.deviceName)
+        return jsonResponse(
+            Response.Status.OK,
+            Json.encodeToString(PairResponseDto.serializer(), PairResponseDto(result.deviceId, result.sharedSecretBase64))
+        )
+    }
+
+    private fun readBody(session: IHTTPSession): String {
+        val files = mutableMapOf<String, String>()
+        session.parseBody(files)
+        return files["postData"] ?: ""
     }
 
     private fun pendingRequestsResponse(): Response {
@@ -103,10 +158,18 @@ class ApprovalHttpServer(context: Context, port: Int) : NanoHTTPD(LOOPBACK_ADDRE
     @Serializable
     private data class ErrorDto(val error: String)
 
+    @Serializable
+    private data class PairRequestDto(val deviceName: String, val code: String)
+
+    @Serializable
+    private data class PairResponseDto(val deviceId: String, val sharedSecret: String)
+
     companion object {
-        private const val LOOPBACK_ADDRESS = "127.0.0.1"
+        private const val BIND_ADDRESS = "0.0.0.0"
         private const val APPROVE_PREFIX = "/approve/"
         private const val DENY_PREFIX = "/deny/"
+        private const val DEVICE_ID_HEADER = "x-kid-mode-device-id"
+        private const val SIGNATURE_HEADER = "x-kid-mode-signature"
         const val DEFAULT_PORT = 46821
     }
 }

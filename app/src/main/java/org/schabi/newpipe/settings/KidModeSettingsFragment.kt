@@ -5,6 +5,8 @@
 package org.schabi.newpipe.settings
 
 import android.os.Bundle
+import androidx.appcompat.app.AlertDialog
+import androidx.preference.Preference
 import androidx.preference.SwitchPreferenceCompat
 import org.schabi.newpipe.R
 import org.schabi.newpipe.kidmode.KidModePinManager
@@ -17,10 +19,12 @@ import org.schabi.newpipe.kidmode.server.KidModeServerService
  */
 class KidModeSettingsFragment : BasePreferenceFragment() {
     private lateinit var enabledPreference: SwitchPreferenceCompat
+    private lateinit var pairDeviceKey: String
 
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         addPreferencesFromResourceRegistry()
         enabledPreference = requirePreference(R.string.kid_mode_enabled_key)
+        pairDeviceKey = getString(R.string.kid_mode_pair_device_key)
 
         val pinManager = KidModePinManager(requireContext())
         if (pinManager.isPinSet()) {
@@ -42,6 +46,31 @@ class KidModeSettingsFragment : BasePreferenceFragment() {
             // once (and if) the PIN step actually succeeds.
             false
         }
+    }
+
+    override fun onPreferenceTreeClick(preference: Preference): Boolean {
+        if (preference.key == pairDeviceKey) {
+            // Pairing grants a new trusted device -- sensitive, same PIN gate as disabling.
+            KidModePinPrompt.show(requireContext(), layoutInflater) { startPairing() }
+            return true
+        }
+        return super.onPreferenceTreeClick(preference)
+    }
+
+    private fun startPairing() {
+        val code = KidModeServerService.startPairingSession()
+        if (code == null) {
+            AlertDialog.Builder(requireContext())
+                .setMessage(R.string.kid_mode_pairing_unavailable)
+                .setPositiveButton(R.string.ok, null)
+                .show()
+            return
+        }
+        AlertDialog.Builder(requireContext())
+            .setTitle(R.string.kid_mode_pairing_code_title)
+            .setMessage(getString(R.string.kid_mode_pairing_code_message, code))
+            .setPositiveButton(R.string.ok, null)
+            .show()
     }
 
     private fun onToggleOn(pinManager: KidModePinManager) {

@@ -37,6 +37,7 @@ public final class SettingsResourceRegistry {
         add(DownloadSettingsFragment.class, R.xml.download_settings);
         add(HistorySettingsFragment.class, R.xml.history_settings);
         add(KidModeSettingsFragment.class, R.xml.kid_mode_settings);
+        add(KidModePairedDevicesFragment.class, R.xml.kid_mode_paired_devices);
         add(NotificationSettingsFragment.class, R.xml.notifications_settings);
         add(PlayerNotificationSettingsFragment.class, R.xml.player_notification_settings);
         add(UpdateSettingsFragment.class, R.xml.update_settings);

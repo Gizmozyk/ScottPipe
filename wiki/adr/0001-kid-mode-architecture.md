@@ -1,7 +1,7 @@
 # 0001: Kid mode architecture
 
-Status: accepted (Phases A and B implemented; C and D not yet built)
-Date: 2026-07-23, updated 2026-07-23 (Phase B)
+Status: accepted (Phases A, B, and C implemented; D not yet built)
+Date: 2026-07-23, updated 2026-07-23 (Phases B and C)
 
 ## Context
 
@@ -77,13 +77,41 @@ automatically) means approving a single video's playback never silently
 subscribes the kid to the channel — subscribing is its own, separately
 gated action.
 
+**Phase C binds the server to `0.0.0.0`, the change Phase B's ADR entry
+already flagged as Phase C's job**, now that `/pair` plus per-request
+HMAC signatures protect it.
+
+**HMAC-over-shared-secret request signing, not sending the shared secret
+itself as a bearer token.** There's no TLS on this local server — a bearer
+token would hand a passive LAN observer the actual secret on the first
+captured request, permanently compromising that pairing until revoked.
+HMAC signing never puts the secret on the wire, only a per-request
+signature. Deliberate scope limit: this scheme has no nonce or timestamp
+and is therefore replayable — a captured signed request could be resent
+later. Accepted for now given the low blast radius (replaying an old
+approve/deny on a same-LAN family network); revisit if that assumption
+stops holding.
+
+**Pairing secret Keystore-wrapped, not hashed like the PIN.** Unlike the
+PIN (`KidModePinManager`, which only ever needs to verify a guess, so a
+one-way hash suffices), the shared secret must be recovered in plaintext
+on every request to compute the expected HMAC. `KidModePairingManager`
+duplicates `KidModePinManager`'s AES/GCM Keystore-wrapping technique
+(under its own key alias) rather than sharing code, since the two have
+different one-way-vs-reversible requirements.
+
 ## Consequences
 
-- No remote approval yet — Phase B's HTTP server exists but is
-  loopback-only, so approving still requires physical access to the kid's
-  device (either the PIN button directly, or `adb forward` for testing).
-  See [features/kid-mode.md](../features/kid-mode.md) for what's planned
-  in Phases C and D.
+- Remote approval still isn't possible from a real second phone — Phase C
+  built the kid-side pairing/auth protocol and NSD advertising, but there's
+  no parent-facing pairing or approval UI yet (Phase D). Verified so far by
+  standing in for a second device with `adb forward` + `curl`/`openssl`,
+  same as Phase B.
+- Cross-device NSD discovery specifically is unverified: the emulator used
+  for development doesn't carry multicast traffic to the host or between
+  instances, so only "the registration call doesn't throw" has actually
+  been confirmed. Needs real-hardware testing once Phase D exists.
+  See `wiki/testing.md`.
 - Because `ApprovalRequestEntity` status changes drive the UI reactively
   (a Room `Flowable`), later phases only need to make something else write
   `APPROVED`/`DENIED` to that row — the waiting screen and the actions it

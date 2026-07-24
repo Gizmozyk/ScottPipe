@@ -30,6 +30,7 @@ object Migrations {
     const val DB_VER_8 = 8
     const val DB_VER_9 = 9
     const val DB_VER_10 = 10
+    const val DB_VER_11 = 11
 
     private val TAG = Migrations::class.java.getName()
     private val isDebug = MainActivity.DEBUG
@@ -375,6 +376,23 @@ object Migrations {
             "CREATE UNIQUE INDEX IF NOT EXISTS " +
                 "`index_kid_mode_approved_channels_service_id_url` " +
                 "ON `kid_mode_approved_channels` (`service_id`, `url`)"
+        )
+    }
+
+    val MIGRATION_10_11 = Migration(DB_VER_10, DB_VER_11) { db ->
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `kid_mode_paired_devices` (" +
+                "`uid` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                "`device_id` TEXT NOT NULL, " +
+                "`device_name` TEXT NOT NULL, " +
+                "`shared_secret` TEXT NOT NULL, " +
+                "`paired_at` INTEGER NOT NULL, " +
+                "`revoked` INTEGER NOT NULL)"
+        )
+        db.execSQL(
+            "CREATE UNIQUE INDEX IF NOT EXISTS " +
+                "`index_kid_mode_paired_devices_device_id` " +
+                "ON `kid_mode_paired_devices` (`device_id`)"
         )
     }
 }
